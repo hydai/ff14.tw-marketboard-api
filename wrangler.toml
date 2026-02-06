@@ -1,0 +1,48 @@
+name = "ff14-tw-marketboard"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cron triggers
+[triggers]
+crons = [
+  "*/5 * * * *",   # Every 5 min: dispatch price fetch tasks
+  "0 4 * * *",     # Daily 04:00 UTC: maintenance (rollup + cleanup)
+  "0 6 * * *",     # Daily 06:00 UTC: item metadata sync
+]
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "marketboard-db"
+database_id = "placeholder-create-with-wrangler"
+migrations_dir = "migrations"
+
+# KV Namespace
+[[kv_namespaces]]
+binding = "KV"
+id = "placeholder-create-with-wrangler"
+
+# Queue Producer
+[[queues.producers]]
+binding = "MARKET_QUEUE"
+queue = "market-data"
+
+# Queue Consumer
+[[queues.consumers]]
+queue = "market-data"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+max_concurrency = 6  # Stay under Universalis 8 concurrent connection limit
+
+# R2 Bucket (optional, for data exports)
+# [[r2_buckets]]
+# binding = "EXPORTS"
+# bucket_name = "marketboard-exports"
+
+[vars]
+DATACENTER_ID = "151"
+DATACENTER_NAME = "陸行鳥"
+REGION_CODE = "8"
+ENVIRONMENT = "production"

@@ -1,0 +1,27 @@
+{
+  "name": "ff14-tw-marketboard",
+  "version": "1.0.0",
+  "description": "FFXIV Market Board price tracking for Taiwan datacenter (陸行鳥)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "wrangler d1 migrations apply marketboard-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply marketboard-db --remote",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.11.8",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.12.10",
+    "@cloudflare/workers-types": "^4.20260206.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18",
+    "wrangler": "^4.63.0"
+  }
+}
