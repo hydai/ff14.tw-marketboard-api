@@ -11,8 +11,9 @@ export class XIVAPIClient {
     this.baseUrl = XIVAPI_BASE_URL;
   }
 
-  async fetchItem(itemId: number): Promise<XIVAPIItem | null> {
-    const url = `${this.baseUrl}/sheet/Item/${itemId}?fields=Name,Name@ja,Name@zh,Icon,ItemSearchCategory.Name,CanBeHq,StackSize`;
+  async fetchItem(itemId: number, language?: string): Promise<XIVAPIItem | null> {
+    const langParam = language ? `&language=${language}` : "";
+    const url = `${this.baseUrl}/sheet/Item/${itemId}?fields=Name,Icon,ItemSearchCategory.Name,CanBeHq,StackSize${langParam}`;
 
     try {
       const resp = await fetch(url, {
@@ -32,6 +33,25 @@ export class XIVAPIClient {
     } catch (err) {
       log.error("XIVAPI fetch failed", { itemId, error: String(err) });
       throw err;
+    }
+  }
+
+  async fetchItemName(itemId: number, language: string): Promise<string | null> {
+    const url = `${this.baseUrl}/sheet/Item/${itemId}?fields=Name&language=${language}`;
+
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          "User-Agent": "ff14-tw-marketboard/1.0",
+          Accept: "application/json",
+        },
+      });
+
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as { fields: { Name: string } };
+      return data.fields.Name;
+    } catch {
+      return null;
     }
   }
 

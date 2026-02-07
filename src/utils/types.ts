@@ -59,44 +59,41 @@ export interface UniversalisSale {
 
 export interface UniversalisAggregatedResponse {
   results: UniversalisAggregatedItem[];
+  failedItems: number[];
 }
 
 export interface UniversalisAggregatedItem {
-  itemID: number;
+  itemId: number;
   nq: UniversalisAggregatedData;
   hq: UniversalisAggregatedData;
-  worldID: number;
-  worldName: string;
+  worldUploadTimes?: { worldId: number; timestamp: number }[];
 }
 
 export interface UniversalisAggregatedData {
-  minListing: { world: { id: number; name: string }; dc: { id: number; name: string }; price: number } | null;
-  listings: { count: number; avg: number };
-  recentHistory: { count: number; avg: number };
+  minListing: { dc?: { price: number; worldId?: number }; region?: { price: number; worldId?: number } };
+  recentPurchase: { dc?: { price: number; timestamp: number; worldId?: number }; region?: { price: number; timestamp: number; worldId?: number } };
+  averageSalePrice: { dc?: { price: number }; region?: { price: number } };
+  dailySaleVelocity: { dc?: { quantity: number }; region?: { quantity: number } };
 }
 
-// Tax rates from Universalis
+// Tax rates from Universalis (flat object per world)
 export interface UniversalisTaxRates {
-  [worldId: string]: {
-    "Limsa Lominsa": number;
-    Gridania: number;
-    "Ul'dah": number;
-    Ishgard: number;
-    Kugane: number;
-    Crystarium: number;
-    "Old Sharlayan": number;
-    Tuliyollal: number;
-  };
+  "Limsa Lominsa": number;
+  Gridania: number;
+  "Ul'dah": number;
+  Ishgard: number;
+  Kugane: number;
+  Crystarium: number;
+  "Old Sharlayan": number;
+  Tuliyollal: number;
 }
 
-// XIVAPI item data
+// XIVAPI item data (v2 API at beta.xivapi.com/api/1)
 export interface XIVAPIItem {
   row_id: number;
   fields: {
     Name: string;
-    "Name@ja": string;
-    "Name@zh": string;
-    Icon: { id: number; path: string; path_hr: string };
+    Icon: { id: number; path: string; path_hr1: string };
     ItemSearchCategory: { row_id: number; fields?: { Name: string } } | null;
     CanBeHq: boolean;
     StackSize: number;

@@ -5,7 +5,7 @@ export const UNIVERSALIS_RATE_LIMIT = 25; // req/s
 export const UNIVERSALIS_MAX_CONCURRENT = 8;
 
 // XIVAPI
-export const XIVAPI_BASE_URL = "https://v2.xivapi.com"; // XIVAPI v2 uses v2 subdomain
+export const XIVAPI_BASE_URL = "https://v2.xivapi.com/api";
 
 // Polling tiers
 export interface TierConfig {

@@ -62,11 +62,16 @@ export async function runItemSync(env: Env): Promise<void> {
       const batch = newItemIds.slice(i, i + XIVAPI_BATCH);
       const items = await xivapi.fetchItemsBatch(batch);
 
-      const rows = items.map((item) => [
+      // Fetch Japanese names in parallel for the batch
+      const jaNames = await Promise.all(
+        items.map((item) => xivapi.fetchItemName(item.row_id, "ja"))
+      );
+
+      const rows = items.map((item, idx) => [
         item.row_id,
         item.fields.Name || "",
-        item.fields["Name@ja"] || "",
-        item.fields["Name@zh"] || item.fields.Name || "",
+        jaNames[idx] || "",
+        item.fields.Name || "", // No Chinese in XIVAPI v2; fall back to English
         item.fields.Icon?.path || "",
         item.fields.ItemSearchCategory?.row_id ?? null,
         item.fields.ItemSearchCategory?.fields?.Name ?? null,
@@ -95,11 +100,15 @@ export async function runItemSync(env: Env): Promise<void> {
       const batch = staleItemIds.slice(i, i + XIVAPI_BATCH);
       const items = await xivapi.fetchItemsBatch(batch);
 
-      const rows = items.map((item) => [
+      const jaNames = await Promise.all(
+        items.map((item) => xivapi.fetchItemName(item.row_id, "ja"))
+      );
+
+      const rows = items.map((item, idx) => [
         item.row_id,
         item.fields.Name || "",
-        item.fields["Name@ja"] || "",
-        item.fields["Name@zh"] || item.fields.Name || "",
+        jaNames[idx] || "",
+        item.fields.Name || "",
         item.fields.Icon?.path || "",
         item.fields.ItemSearchCategory?.row_id ?? null,
         item.fields.ItemSearchCategory?.fields?.Name ?? null,
@@ -125,9 +134,7 @@ export async function runItemSync(env: Env): Promise<void> {
   // Step 5: Fetch and update tax rates for each world
   for (const world of DC_LUHANGNIAO.worlds) {
     try {
-      const taxRates = await universalis.fetchTaxRates(world.id);
-      const worldRates = taxRates[String(world.id)];
-      if (!worldRates) continue;
+      const rates = await universalis.fetchTaxRates(world.id);
 
       await env.DB
         .prepare(
@@ -141,14 +148,14 @@ export async function runItemSync(env: Env): Promise<void> {
         .bind(
           world.id,
           world.name,
-          worldRates["Limsa Lominsa"] ?? 0,
-          worldRates["Gridania"] ?? 0,
-          worldRates["Ul'dah"] ?? 0,
-          worldRates["Ishgard"] ?? 0,
-          worldRates["Kugane"] ?? 0,
-          worldRates["Crystarium"] ?? 0,
-          worldRates["Old Sharlayan"] ?? 0,
-          worldRates["Tuliyollal"] ?? 0,
+          rates["Limsa Lominsa"] ?? 0,
+          rates["Gridania"] ?? 0,
+          rates["Ul'dah"] ?? 0,
+          rates["Ishgard"] ?? 0,
+          rates["Kugane"] ?? 0,
+          rates["Crystarium"] ?? 0,
+          rates["Old Sharlayan"] ?? 0,
+          rates["Tuliyollal"] ?? 0,
         )
         .run();
 
