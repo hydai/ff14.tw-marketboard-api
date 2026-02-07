@@ -6,7 +6,19 @@ import type { Env } from "../env";
 const log = createLogger("api");
 
 export function corsMiddleware() {
-  return cors({ origin: "*" });
+  return cors({
+    origin: (origin) => {
+      try {
+        const { hostname } = new URL(origin);
+        if (hostname === "ff14.tw" || hostname.endsWith(".ff14.tw")) {
+          return origin;
+        }
+      } catch {
+        // invalid origin
+      }
+      return undefined;
+    },
+  });
 }
 
 export async function errorHandler(c: Context<{ Bindings: Env }>, next: Next) {
