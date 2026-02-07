@@ -133,6 +133,34 @@ export async function runItemSync(env: Env): Promise<void> {
     )
     .run();
 
+  // Step 5b: Bootstrap tiers from Universalis velocity data for cold-start
+  // When sales_history is empty (all items stuck at tier 3), use the
+  // sale_velocity fields already collected by fetch-aggregated to promote items.
+  // This only affects items currently at tier 3 with velocity data available.
+  await env.DB
+    .prepare(
+      `INSERT OR REPLACE INTO item_tiers (item_id, tier, updated_at)
+       SELECT
+         item_id,
+         CASE
+           WHEN total_velocity > 10 THEN 1
+           WHEN total_velocity >= 2 THEN 2
+           ELSE 3
+         END as tier,
+         datetime('now') as updated_at
+       FROM (
+         SELECT
+           item_id,
+           AVG(sale_velocity_nq + sale_velocity_hq) as total_velocity
+         FROM price_snapshots
+         WHERE snapshot_time >= datetime('now', '-1 day')
+         GROUP BY item_id
+         HAVING total_velocity >= 2
+       )
+       WHERE item_id IN (SELECT item_id FROM item_tiers WHERE tier = 3)`
+    )
+    .run();
+
   // Also insert tier 3 for marketable items with no recent sales
   await env.DB
     .prepare(
