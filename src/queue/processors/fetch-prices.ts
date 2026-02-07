@@ -97,6 +97,12 @@ async function processItem(
   const cheapestNQ = dcNqListings.length > 0
     ? dcNqListings.reduce((min, l) => l.pricePerUnit < min.pricePerUnit ? l : min)
     : undefined;
+  const cheapestHQ = dcHqListings.length > 0
+    ? dcHqListings.reduce((min, l) => l.pricePerUnit < min.pricePerUnit ? l : min)
+    : undefined;
+  const cheapestOverall = cheapestNQ && cheapestHQ
+    ? (cheapestNQ.pricePerUnit <= cheapestHQ.pricePerUnit ? cheapestNQ : cheapestHQ)
+    : cheapestNQ ?? cheapestHQ;
 
   await batchInsert(
     env.DB,
@@ -120,8 +126,8 @@ async function processItem(
       data.unitsForSale,
       data.nqSaleVelocity,
       data.hqSaleVelocity,
-      cheapestNQ?.worldID ?? null,
-      cheapestNQ?.worldName ?? null,
+      cheapestOverall?.worldID ?? null,
+      cheapestOverall?.worldName ?? null,
     ]]
   );
 
@@ -217,7 +223,7 @@ async function processItem(
     listingCount: data.listingsCount,
     saleVelocityNQ: data.nqSaleVelocity,
     saleVelocityHQ: data.hqSaleVelocity,
-    cheapestWorld: cheapestNQ?.worldName ?? null,
+    cheapestWorld: cheapestOverall?.worldName ?? null,
     lastUpdated: snapshotTime,
   };
 

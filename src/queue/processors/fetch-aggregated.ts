@@ -5,6 +5,7 @@ import { KVCache } from "../../cache/kv";
 import { batchInsert } from "../../db/batch";
 import { createLogger } from "../../utils/logger";
 import type { PriceSummary, UniversalisAggregatedItem } from "../../utils/types";
+import { WORLDS_BY_ID } from "../../config/datacenters";
 
 const log = createLogger("fetch-aggregated");
 
@@ -53,8 +54,15 @@ async function processAggregatedItem(
   const velocityNQ = result.nq.dailySaleVelocity?.dc?.quantity ?? 0;
   const velocityHQ = result.hq.dailySaleVelocity?.dc?.quantity ?? 0;
 
-  // Cheapest world from minListing
-  const cheapestWorldId = result.nq.minListing?.dc?.worldId ?? null;
+  // Cheapest world: compare NQ and HQ, pick the lower price
+  const nqWorldId = result.nq.minListing?.dc?.worldId ?? null;
+  const hqWorldId = result.hq.minListing?.dc?.worldId ?? null;
+  const nqPrice = minNQ ?? Infinity;
+  const hqPrice = minHQ ?? Infinity;
+  const cheapestWorldId = nqPrice <= hqPrice ? nqWorldId : hqWorldId;
+  const cheapestWorldName = cheapestWorldId != null
+    ? (WORLDS_BY_ID.get(cheapestWorldId)?.name ?? null)
+    : null;
 
   await batchInsert(
     env.DB,
@@ -65,6 +73,7 @@ async function processAggregatedItem(
       "avg_price_nq", "avg_price_hq",
       "listing_count", "units_for_sale",
       "sale_velocity_nq", "sale_velocity_hq",
+      "cheapest_world_id", "cheapest_world_name",
     ],
     [[
       itemId,
@@ -77,6 +86,8 @@ async function processAggregatedItem(
       0, // aggregated endpoint doesn't provide units_for_sale
       velocityNQ,
       velocityHQ,
+      cheapestWorldId,
+      cheapestWorldName,
     ]]
   );
 
@@ -90,7 +101,7 @@ async function processAggregatedItem(
     listingCount: 0,
     saleVelocityNQ: velocityNQ,
     saleVelocityHQ: velocityHQ,
-    cheapestWorld: cheapestWorldId ? String(cheapestWorldId) : null,
+    cheapestWorld: cheapestWorldName,
     lastUpdated: snapshotTime,
   };
 
