@@ -42,6 +42,19 @@ export async function processSyncItems(
       rows,
       "ON CONFLICT(item_id) DO UPDATE SET name_en=excluded.name_en, name_ja=excluded.name_ja, name_zh=excluded.name_zh, icon_path=excluded.icon_path, category_id=excluded.category_id, category_name=excluded.category_name, is_hq_available=excluded.is_hq_available, stack_size=excluded.stack_size, updated_at=excluded.updated_at"
     );
+
+    // Assign default tier 3 so the dispatcher can pick up these items immediately.
+    // ON CONFLICT DO NOTHING preserves refined tiers (1/2) from the hourly tier update.
+    const tierRows = items.map((item) => [item.row_id, 3, now]);
+    await batchInsert(
+      env.DB,
+      "item_tiers",
+      ["item_id", "tier", "updated_at"],
+      tierRows,
+      "ON CONFLICT(item_id) DO NOTHING"
+    );
+
+    log.info("Assigned default tiers", { count: tierRows.length });
   }
 
   log.info("Sync-items complete", {
