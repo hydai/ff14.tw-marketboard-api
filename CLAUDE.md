@@ -60,7 +60,8 @@ src/
 │   └── maintenance.ts        # Daily rollup + cleanup
 ├── db/
 │   ├── queries.ts            # D1 SQL queries
-│   └── batch.ts              # Batch insert/upsert helpers
+│   ├── batch.ts              # Batch insert/upsert helpers
+│   └── stats.ts              # Batched D1 count queries for /stats
 ├── queue/
 │   ├── consumer.ts           # Queue message router
 │   ├── messages.ts           # Message builder helpers

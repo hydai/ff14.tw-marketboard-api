@@ -68,6 +68,7 @@ All endpoints are under `/api/v1`.
 | GET    | `/worlds`     | Worlds in 陸行鳥 datacenter |
 | GET    | `/tax-rates`  | City tax rates per world    |
 | GET    | `/status`     | Health check                |
+| GET    | `/stats`      | Data collection statistics  |
 
 ## Setup
 
