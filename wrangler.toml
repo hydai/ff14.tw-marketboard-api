@@ -41,6 +41,12 @@ max_concurrency = 6  # Stay under Universalis 8 concurrent connection limit
 # binding = "EXPORTS"
 # bucket_name = "marketboard-exports"
 
+# Observability
+[observability]
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 [vars]
 DATACENTER_ID = "151"
 DATACENTER_NAME = "陸行鳥"
