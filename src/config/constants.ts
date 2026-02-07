@@ -1,6 +1,7 @@
 // Universalis API
 export const UNIVERSALIS_BASE_URL = "https://universalis.app/api/v2";
-export const UNIVERSALIS_MAX_ITEMS_PER_REQUEST = 100;
+export const UNIVERSALIS_ITEMS_PER_REQUEST = 20;           // full listings (heavy payload)
+export const UNIVERSALIS_ITEMS_PER_REQUEST_AGGREGATED = 50; // aggregated stats (light payload)
 export const UNIVERSALIS_RATE_LIMIT = 25; // req/s
 export const UNIVERSALIS_MAX_CONCURRENT = 8;
 

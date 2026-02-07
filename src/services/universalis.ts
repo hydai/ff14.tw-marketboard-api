@@ -1,5 +1,10 @@
 import { z } from "zod/v4";
-import { UNIVERSALIS_BASE_URL } from "../config/constants";
+import {
+  UNIVERSALIS_BASE_URL,
+  UNIVERSALIS_ITEMS_PER_REQUEST,
+  UNIVERSALIS_ITEMS_PER_REQUEST_AGGREGATED,
+} from "../config/constants";
+import { chunk } from "../utils/math";
 import { DC_LUHANGNIAO } from "../config/datacenters";
 import { createLogger } from "../utils/logger";
 import type {
@@ -25,21 +30,43 @@ export class UniversalisClient {
   }
 
   async fetchMultiItemPrices(itemIds: number[]): Promise<UniversalisMultiResponse> {
-    const ids = itemIds.join(",");
-    const url = `${this.baseUrl}/${encodeURIComponent(this.dcName)}/${ids}?listings=20&entries=20`;
+    const batches = chunk(itemIds, UNIVERSALIS_ITEMS_PER_REQUEST);
+    log.info("Fetching multi-item prices", {
+      itemCount: itemIds.length,
+      batches: batches.length,
+    });
 
-    log.info("Fetching multi-item prices", { itemCount: itemIds.length });
-    const resp = await this.request(url);
-    return resp as UniversalisMultiResponse;
+    const merged: UniversalisMultiResponse = { itemIDs: [], items: {}, dcName: this.dcName };
+
+    for (const batch of batches) {
+      const ids = batch.join(",");
+      const url = `${this.baseUrl}/${encodeURIComponent(this.dcName)}/${ids}?listings=20&entries=20`;
+      const resp = (await this.request(url)) as UniversalisMultiResponse;
+      merged.itemIDs.push(...resp.itemIDs);
+      Object.assign(merged.items, resp.items);
+    }
+
+    return merged;
   }
 
   async fetchAggregated(itemIds: number[]): Promise<UniversalisAggregatedResponse> {
-    const ids = itemIds.join(",");
-    const url = `${this.baseUrl}/aggregated/${encodeURIComponent(this.dcName)}/${ids}`;
+    const batches = chunk(itemIds, UNIVERSALIS_ITEMS_PER_REQUEST_AGGREGATED);
+    log.info("Fetching aggregated prices", {
+      itemCount: itemIds.length,
+      batches: batches.length,
+    });
 
-    log.info("Fetching aggregated prices", { itemCount: itemIds.length });
-    const resp = await this.request(url);
-    return resp as UniversalisAggregatedResponse;
+    const merged: UniversalisAggregatedResponse = { results: [], failedItems: [] };
+
+    for (const batch of batches) {
+      const ids = batch.join(",");
+      const url = `${this.baseUrl}/aggregated/${encodeURIComponent(this.dcName)}/${ids}`;
+      const resp = (await this.request(url)) as UniversalisAggregatedResponse;
+      merged.results.push(...resp.results);
+      merged.failedItems.push(...resp.failedItems);
+    }
+
+    return merged;
   }
 
   async fetchMarketableItems(): Promise<number[]> {
