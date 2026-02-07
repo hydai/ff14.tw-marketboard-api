@@ -18,33 +18,7 @@ export async function runMaintenance(db: D1Database): Promise<void> {
   const salesCutoff = `datetime('now', '-${RETENTION_HOURLY_AGGREGATES} days')`;
   const worldSnapshotCutoff = `datetime('now', '-${RETENTION_RAW_SNAPSHOTS} days')`;
 
-  // Step 1: Roll up old price_snapshots into hourly_aggregates
-  const rollupHourly = await db
-    .prepare(
-      `INSERT OR REPLACE INTO hourly_aggregates (item_id, hour_timestamp, min_price_nq, avg_price_nq, max_price_nq, min_price_hq, avg_price_hq, max_price_hq, total_listings, total_sales, total_sales_gil)
-       SELECT
-         item_id,
-         strftime('%Y-%m-%d %H:00:00', snapshot_time) as hour_timestamp,
-         MIN(min_price_nq) as min_price_nq,
-         AVG(avg_price_nq) as avg_price_nq,
-         MAX(min_price_nq) as max_price_nq,
-         MIN(min_price_hq) as min_price_hq,
-         AVG(avg_price_hq) as avg_price_hq,
-         MAX(min_price_hq) as max_price_hq,
-         SUM(listing_count) as total_listings,
-         0 as total_sales,
-         0 as total_sales_gil
-       FROM price_snapshots
-       WHERE snapshot_time < ${snapshotCutoff}
-       GROUP BY item_id, strftime('%Y-%m-%d %H:00:00', snapshot_time)`
-    )
-    .run();
-
-  log.info("Rolled up snapshots to hourly", {
-    rowsWritten: rollupHourly.meta.rows_written,
-  });
-
-  // Delete the rolled-up snapshots
+  // Step 1: Delete old price_snapshots
   const deleteSnapshots = await db
     .prepare(`DELETE FROM price_snapshots WHERE snapshot_time < ${snapshotCutoff}`)
     .run();
@@ -53,33 +27,7 @@ export async function runMaintenance(db: D1Database): Promise<void> {
     rowsDeleted: deleteSnapshots.meta.rows_written,
   });
 
-  // Step 2: Roll up old hourly_aggregates into daily_aggregates
-  const rollupDaily = await db
-    .prepare(
-      `INSERT OR REPLACE INTO daily_aggregates (item_id, day_timestamp, min_price_nq, avg_price_nq, max_price_nq, min_price_hq, avg_price_hq, max_price_hq, total_listings, total_sales, total_sales_gil)
-       SELECT
-         item_id,
-         date(hour_timestamp) as day_timestamp,
-         MIN(min_price_nq) as min_price_nq,
-         AVG(avg_price_nq) as avg_price_nq,
-         MAX(max_price_nq) as max_price_nq,
-         MIN(min_price_hq) as min_price_hq,
-         AVG(avg_price_hq) as avg_price_hq,
-         MAX(max_price_hq) as max_price_hq,
-         SUM(total_listings) as total_listings,
-         SUM(total_sales) as total_sales,
-         SUM(total_sales_gil) as total_sales_gil
-       FROM hourly_aggregates
-       WHERE hour_timestamp < ${hourlyCutoff}
-       GROUP BY item_id, date(hour_timestamp)`
-    )
-    .run();
-
-  log.info("Rolled up hourly to daily", {
-    rowsWritten: rollupDaily.meta.rows_written,
-  });
-
-  // Delete the rolled-up hourly aggregates
+  // Step 2: Delete old hourly_aggregates
   const deleteHourly = await db
     .prepare(`DELETE FROM hourly_aggregates WHERE hour_timestamp < ${hourlyCutoff}`)
     .run();

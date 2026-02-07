@@ -82,7 +82,9 @@ export async function dispatch(env: Env): Promise<void> {
 
   await setMeta(env.DB, "last_poll_time", new Date().toISOString());
   await setMeta(env.DB, "last_dispatch_fetch_prices", String(fetchPricesEnqueued));
-  await setMeta(env.DB, "last_dispatch_fetch_aggregated", String(fetchAggregatedEnqueued));
+  if (fetchAggregatedEnqueued > 0) {
+    await setMeta(env.DB, "last_dispatch_fetch_aggregated", String(fetchAggregatedEnqueued));
+  }
 
   log.info("Dispatch complete", { totalEnqueued, fetchPricesEnqueued, fetchAggregatedEnqueued });
 }

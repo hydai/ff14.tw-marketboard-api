@@ -3,6 +3,7 @@ import { handleQueue } from "./queue/consumer";
 import { dispatch } from "./cron/dispatcher";
 import { runMaintenance } from "./cron/maintenance";
 import { runItemSync } from "./cron/item-sync";
+import { runAggregation } from "./cron/aggregation";
 import { createLogger } from "./utils/logger";
 import type { Env, QueueMessage } from "./env";
 
@@ -30,6 +31,7 @@ export default {
 
         case "0 * * * *":
           await runItemSync(env);
+          await runAggregation(env.DB);
           break;
 
         default:
