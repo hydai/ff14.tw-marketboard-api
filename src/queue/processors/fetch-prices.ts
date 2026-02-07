@@ -94,6 +94,10 @@ async function processItem(
     ? Math.round(median(dcHqListings.map((l) => l.pricePerUnit)))
     : null;
 
+  const cheapestNQ = dcNqListings.length > 0
+    ? dcNqListings.reduce((min, l) => l.pricePerUnit < min.pricePerUnit ? l : min)
+    : undefined;
+
   await batchInsert(
     env.DB,
     "price_snapshots",
@@ -103,6 +107,7 @@ async function processItem(
       "avg_price_nq", "avg_price_hq",
       "listing_count", "units_for_sale",
       "sale_velocity_nq", "sale_velocity_hq",
+      "cheapest_world_id", "cheapest_world_name",
     ],
     [[
       itemId,
@@ -115,6 +120,8 @@ async function processItem(
       data.unitsForSale,
       data.nqSaleVelocity,
       data.hqSaleVelocity,
+      cheapestNQ?.worldID ?? null,
+      cheapestNQ?.worldName ?? null,
     ]]
   );
 
@@ -201,10 +208,6 @@ async function processItem(
   }
 
   // 5. Update KV cache with latest price summary
-  const cheapestNQ = data.listings
-    .filter((l) => !l.hq)
-    .sort((a, b) => a.pricePerUnit - b.pricePerUnit)[0];
-
   const priceSummary: PriceSummary = {
     itemId,
     minPriceNQ: data.minPriceNQ || null,
