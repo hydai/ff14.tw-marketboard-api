@@ -26,11 +26,23 @@ export async function getListings(c: Context<{ Bindings: Env }>) {
   const hqParam = c.req.query("hq");
   const hq = hqParam === "true" ? true : hqParam === "false" ? false : undefined;
 
-  // KV cache first
+  // KV cache first (stored in camelCase, normalize to snake_case for frontend)
   const kv = new KVCache(c.env.KV);
   const cached = await kv.getJSON(KVCache.listingsKey(itemId));
   if (cached && hq === undefined) {
-    return c.json({ data: cached });
+    const normalized = (cached as any[]).map((l: any) => ({
+      world_name: l.worldName ?? l.world_name,
+      price_per_unit: l.pricePerUnit ?? l.price_per_unit,
+      quantity: l.quantity,
+      total: l.total,
+      tax: l.tax,
+      hq: typeof l.hq === "boolean" ? (l.hq ? 1 : 0) : l.hq,
+      retainer_name: l.retainerName ?? l.retainer_name,
+      retainer_city: l.retainerCity ?? l.retainer_city,
+      listing_id: l.listingId ?? l.listing_id,
+      last_review_time: l.lastReviewTime ?? l.last_review_time,
+    }));
+    return c.json({ data: normalized });
   }
 
   // Fallback to D1
