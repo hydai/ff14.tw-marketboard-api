@@ -8,6 +8,7 @@ import { listDeals } from "./handlers/deals";
 import { listTrending } from "./handlers/trending";
 import { healthCheck, listWorlds, listTaxRates } from "./handlers/status";
 import { listVelocity } from "./handlers/velocity";
+import { getStats } from "./handlers/stats";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -38,6 +39,7 @@ api.get("/velocity", listVelocity);
 api.get("/worlds", listWorlds);
 api.get("/tax-rates", listTaxRates);
 api.get("/status", healthCheck);
+api.get("/stats", getStats);
 
 app.route("/api/v1", api);
 
