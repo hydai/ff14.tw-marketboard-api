@@ -12,27 +12,36 @@ export default {
   fetch: app.fetch,
 
   async scheduled(
-    event: ScheduledEvent,
+    controller: ScheduledController,
     env: Env,
     ctx: ExecutionContext
   ): Promise<void> {
-    log.info("Scheduled event", { cron: event.cron });
+    log.info("Scheduled event", { cron: controller.cron });
 
-    switch (event.cron) {
-      case "*/5 * * * *":
-        ctx.waitUntil(dispatch(env));
-        break;
+    try {
+      switch (controller.cron) {
+        case "*/5 * * * *":
+          await dispatch(env);
+          break;
 
-      case "0 4 * * *":
-        ctx.waitUntil(runMaintenance(env.DB));
-        break;
+        case "0 4 * * *":
+          await runMaintenance(env.DB);
+          break;
 
-      case "0 6 * * *":
-        ctx.waitUntil(runItemSync(env));
-        break;
+        case "0 6 * * *":
+          await runItemSync(env);
+          break;
 
-      default:
-        log.warn("Unknown cron pattern", { cron: event.cron });
+        default:
+          log.warn("Unknown cron pattern", { cron: controller.cron });
+          controller.noRetry();
+      }
+    } catch (err) {
+      log.error("Scheduled job failed", {
+        cron: controller.cron,
+        error: String(err),
+      });
+      throw err;
     }
   },
 
