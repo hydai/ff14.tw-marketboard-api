@@ -6,6 +6,7 @@ export const UNIVERSALIS_MAX_CONCURRENT = 8;
 
 // XIVAPI
 export const XIVAPI_BASE_URL = "https://v2.xivapi.com/api";
+export const XIVAPI_BATCH_ROWS = 100; // items per ?rows= request
 
 // Polling tiers
 export interface TierConfig {

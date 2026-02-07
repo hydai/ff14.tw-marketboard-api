@@ -28,7 +28,7 @@ export default {
           await runMaintenance(env.DB);
           break;
 
-        case "0 6 * * *":
+        case "0 * * * *":
           await runItemSync(env);
           break;
 

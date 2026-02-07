@@ -3,6 +3,7 @@ import { RateLimitedError } from "../services/universalis";
 import { processFetchPrices } from "./processors/fetch-prices";
 import { processFetchAggregated } from "./processors/fetch-aggregated";
 import { processComputeAnalytics } from "./processors/compute-analytics";
+import { processSyncItems } from "./processors/sync-items";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("queue-consumer");
@@ -43,6 +44,9 @@ async function routeMessage(msg: QueueMessage, env: Env): Promise<void> {
       break;
     case "compute-analytics":
       await processComputeAnalytics(msg, env);
+      break;
+    case "sync-items":
+      await processSyncItems(msg, env);
       break;
     default:
       log.error("Unknown message type", { msg });

@@ -18,7 +18,8 @@ export interface Env {
 export type QueueMessage =
   | FetchPricesMessage
   | FetchAggregatedMessage
-  | ComputeAnalyticsMessage;
+  | ComputeAnalyticsMessage
+  | SyncItemsMessage;
 
 export interface FetchPricesMessage {
   type: "fetch-prices";
@@ -34,4 +35,10 @@ export interface FetchAggregatedMessage {
 export interface ComputeAnalyticsMessage {
   type: "compute-analytics";
   kind: "arbitrage" | "deals" | "trending" | "velocity";
+}
+
+export interface SyncItemsMessage {
+  type: "sync-items";
+  itemIds: number[];
+  isNew: boolean;
 }

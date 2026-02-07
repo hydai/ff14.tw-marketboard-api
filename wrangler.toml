@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 crons = [
   "*/5 * * * *",   # Every 5 min: dispatch price fetch tasks
   "0 4 * * *",     # Daily 04:00 UTC: maintenance (rollup + cleanup)
-  "0 6 * * *",     # Daily 06:00 UTC: item metadata sync
+  "0 * * * *",     # Hourly: item metadata sync
 ]
 
 # D1 Database
