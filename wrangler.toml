@@ -15,13 +15,13 @@ crons = [
 [[d1_databases]]
 binding = "DB"
 database_name = "marketboard-db"
-database_id = "placeholder-create-with-wrangler"
+database_id = "c3fd481a-1b5e-416d-b75d-c114f70a5e9e"
 migrations_dir = "migrations"
 
 # KV Namespace
 [[kv_namespaces]]
 binding = "KV"
-id = "placeholder-create-with-wrangler"
+id = "b45d33e2500847dc83dd2765e701da56"
 
 # Queue Producer
 [[queues.producers]]
