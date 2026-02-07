@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { QUEUE_BATCH_SIZE, TIER_CONFIGS, KV_TTL_MARKETABLE_ITEMS } from "../config/constants";
 import { UniversalisClient } from "../services/universalis";
 import { KVCache } from "../cache/kv";
-import { getItemsByTier } from "../db/queries";
+import { getItemsByTier, setMeta } from "../db/queries";
 import { createFetchPricesMessage, createFetchAggregatedMessage, createComputeAnalyticsMessage } from "../queue/messages";
 import { createLogger } from "../utils/logger";
 import { chunk } from "../utils/math";
@@ -29,6 +29,8 @@ export async function dispatch(env: Env): Promise<void> {
   const minutesSinceMidnight = now.getUTCHours() * 60 + now.getUTCMinutes();
 
   let totalEnqueued = 0;
+  let fetchPricesEnqueued = 0;
+  let fetchAggregatedEnqueued = 0;
 
   for (const tierConfig of TIER_CONFIGS) {
     // Check if this tier should fire this cycle
@@ -58,10 +60,12 @@ export async function dispatch(env: Env): Promise<void> {
     for (const batch of batches) {
       if (tierConfig.useAggregated) {
         await env.MARKET_QUEUE.send(createFetchAggregatedMessage(batch));
+        fetchAggregatedEnqueued++;
       } else {
         await env.MARKET_QUEUE.send(
           createFetchPricesMessage(batch, tierConfig.tier as 1 | 2 | 3)
         );
+        fetchPricesEnqueued++;
       }
       totalEnqueued++;
     }
@@ -76,5 +80,9 @@ export async function dispatch(env: Env): Promise<void> {
     log.info("Enqueued analytics computations", { kinds: analyticsKinds.length });
   }
 
-  log.info("Dispatch complete", { totalEnqueued });
+  await setMeta(env.DB, "last_poll_time", new Date().toISOString());
+  await setMeta(env.DB, "last_dispatch_fetch_prices", String(fetchPricesEnqueued));
+  await setMeta(env.DB, "last_dispatch_fetch_aggregated", String(fetchAggregatedEnqueued));
+
+  log.info("Dispatch complete", { totalEnqueued, fetchPricesEnqueued, fetchAggregatedEnqueued });
 }

@@ -16,11 +16,13 @@ export async function getStats(c: Context<{ Bindings: Env }>) {
     return c.json({ ...cached, cached: true });
   }
 
-  const [stats, lastPoll, lastMaintenance, lastItemSync] = await Promise.all([
+  const [stats, lastPoll, lastMaintenance, lastItemSync, lastFetchPrices, lastFetchAggregated] = await Promise.all([
     getCollectionStats(c.env.DB),
     getMeta(c.env.DB, "last_poll_time"),
     getMeta(c.env.DB, "last_maintenance"),
     getMeta(c.env.DB, "last_item_sync"),
+    getMeta(c.env.DB, "last_dispatch_fetch_prices"),
+    getMeta(c.env.DB, "last_dispatch_fetch_aggregated"),
   ]);
 
   const result: CollectionStats = {
@@ -30,6 +32,10 @@ export async function getStats(c: Context<{ Bindings: Env }>) {
       lastPollTime: lastPoll?.value ?? null,
       lastMaintenance: lastMaintenance?.value ?? null,
       lastItemSync: lastItemSync?.value ?? null,
+    },
+    dispatch: {
+      lastFetchPricesMessages: Number(lastFetchPrices?.value ?? 0),
+      lastFetchAggregatedMessages: Number(lastFetchAggregated?.value ?? 0),
     },
     tables: stats.tables,
     tiers: stats.tiers,
@@ -48,6 +54,10 @@ interface CollectionStats {
     lastPollTime: string | null;
     lastMaintenance: string | null;
     lastItemSync: string | null;
+  };
+  dispatch: {
+    lastFetchPricesMessages: number;
+    lastFetchAggregatedMessages: number;
   };
   tables: {
     items: number;
