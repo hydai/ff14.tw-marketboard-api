@@ -6,6 +6,7 @@ import { batchInsert } from "../../db/batch";
 import { deleteListingsForItem } from "../../db/queries";
 import { createLogger } from "../../utils/logger";
 import type { PriceSummary, UniversalisItemData, UniversalisListing, UniversalisSale } from "../../utils/types";
+import { median } from "../../utils/math";
 
 const log = createLogger("fetch-prices");
 
@@ -83,7 +84,16 @@ async function processItem(
     );
   }
 
-  // 2. Insert DC-level price snapshot
+  // 2. Insert DC-level price snapshot (median instead of Universalis mean)
+  const dcNqListings = data.listings.filter((l) => !l.hq);
+  const dcHqListings = data.listings.filter((l) => l.hq);
+  const medianNQ = dcNqListings.length > 0
+    ? Math.round(median(dcNqListings.map((l) => l.pricePerUnit)))
+    : null;
+  const medianHQ = dcHqListings.length > 0
+    ? Math.round(median(dcHqListings.map((l) => l.pricePerUnit)))
+    : null;
+
   await batchInsert(
     env.DB,
     "price_snapshots",
@@ -99,8 +109,8 @@ async function processItem(
       snapshotTime,
       data.minPriceNQ,
       data.minPriceHQ,
-      data.currentAveragePriceNQ,
-      data.currentAveragePriceHQ,
+      medianNQ,
+      medianHQ,
       data.listingsCount,
       data.unitsForSale,
       data.nqSaleVelocity,
@@ -131,10 +141,10 @@ async function processItem(
         : null;
 
       const avgNQ = nqListings.length > 0
-        ? Math.round(nqListings.reduce((s, l) => s + l.pricePerUnit, 0) / nqListings.length)
+        ? Math.round(median(nqListings.map((l) => l.pricePerUnit)))
         : null;
       const avgHQ = hqListings.length > 0
-        ? Math.round(hqListings.reduce((s, l) => s + l.pricePerUnit, 0) / hqListings.length)
+        ? Math.round(median(hqListings.map((l) => l.pricePerUnit)))
         : null;
 
       worldRows.push([
@@ -199,8 +209,8 @@ async function processItem(
     itemId,
     minPriceNQ: data.minPriceNQ || null,
     minPriceHQ: data.minPriceHQ || null,
-    avgPriceNQ: data.currentAveragePriceNQ || null,
-    avgPriceHQ: data.currentAveragePriceHQ || null,
+    avgPriceNQ: medianNQ,
+    avgPriceHQ: medianHQ,
     listingCount: data.listingsCount,
     saleVelocityNQ: data.nqSaleVelocity,
     saleVelocityHQ: data.hqSaleVelocity,
