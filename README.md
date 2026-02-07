@@ -25,6 +25,12 @@ A single Cloudflare Worker handles three entry points:
 | `scheduled` | Cron (`*/5m`, `04:00`, `06:00`)  | Dispatch tasks, maintenance, item sync    |
 | `queue`     | Queue messages                   | Fetch prices, compute analytics           |
 
+### Data Processing
+
+- **fetch-prices** — Fetches full listing data per item, stores listings + snapshots + sales in D1, caches summary in KV
+- **fetch-aggregated** — Fetches aggregated min/avg/velocity data, stores snapshots in D1, caches summary in KV
+- Both processors determine the **cheapest world** by comparing NQ and HQ min prices across all worlds
+
 ## Tech Stack
 
 - **Runtime**: Cloudflare Workers

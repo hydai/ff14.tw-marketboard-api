@@ -80,6 +80,19 @@ src/
 - **Universalis** (https://universalis.app) — Market listings, history, sales. Rate limit: 8 concurrent connections.
 - **XIVAPI** (https://xivapi.com) — Item metadata (name, category, icon).
 
+## Critical Patterns
+
+### Cheapest World Resolution
+
+Both queue processors (`fetch-prices`, `fetch-aggregated`) determine the cheapest world by comparing NQ and HQ min prices — null prices are treated as `Infinity` so they never win. The overall cheapest is written to both D1 (`cheapest_world_id`, `cheapest_world_name`) and KV (`cheapestWorld`).
+
+- `fetch-prices` has full listing data, so it reads `worldName` directly from the `UniversalisListing` object
+- `fetch-aggregated` only gets a numeric `worldId` from the aggregated endpoint, so it resolves the name via `WORLDS_BY_ID` from `src/config/datacenters.ts`
+
+### KV vs D1 Response Format
+
+KV cache stores camelCase (`PriceSummary`), D1 returns snake_case. The frontend uses `normalizePriceSummary()` to unify both formats. API reads go KV-first, falling back to D1.
+
 ## Important Notes
 
 - Queue concurrency is capped at 6 (`wrangler.toml`) to stay under Universalis's 8 connection limit
