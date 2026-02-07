@@ -31,7 +31,7 @@ queue = "market-data"
 # Queue Consumer
 [[queues.consumers]]
 queue = "market-data"
-max_batch_size = 10
+max_batch_size = 1
 max_batch_timeout = 5
 max_retries = 3
 max_concurrency = 6  # Stay under Universalis 8 concurrent connection limit
