@@ -221,37 +221,41 @@ export function getDeals(
   opts: { maxPercentile: number; category?: number; worldId?: number; limit: number }
 ) {
   let sql = `
-    WITH avg_prices AS (
+    WITH world_mins AS (
+      SELECT item_id, world_id, world_name,
+             MIN(price_per_unit) as min_price
+      FROM current_listings
+      WHERE hq = 0
+      GROUP BY item_id, world_id
+    ),
+    max_min AS (
       SELECT item_id,
-             AVG(avg_price_nq) as recent_avg
-      FROM price_snapshots
-      WHERE snapshot_time >= datetime('now', '-3 days')
-        AND avg_price_nq > 0
+             MAX(min_price) as max_min_price
+      FROM world_mins
       GROUP BY item_id
     ),
     cheapest AS (
-      SELECT cl.item_id, cl.world_name, cl.price_per_unit, cl.hq,
-             ROW_NUMBER() OVER (PARTITION BY cl.item_id ORDER BY cl.price_per_unit ASC) as rn
-      FROM current_listings cl
-      WHERE cl.hq = 0`;
+      SELECT wm.item_id, wm.world_id, wm.world_name, wm.min_price as price_per_unit,
+             ROW_NUMBER() OVER (PARTITION BY wm.item_id ORDER BY wm.min_price ASC) as rn
+      FROM world_mins wm`;
 
   const params: unknown[] = [];
 
   if (opts.worldId) {
-    sql += " AND cl.world_id = ?";
+    sql += " WHERE wm.world_id = ?";
     params.push(opts.worldId);
   }
 
   sql += `
     )
     SELECT c.item_id, i.name_zh as item_name, c.world_name, c.price_per_unit as current_price,
-           a.recent_avg as average_price,
-           ROUND((1 - CAST(c.price_per_unit AS REAL) / a.recent_avg) * 100, 1) as discount
+           mm.max_min_price as average_price,
+           ROUND((1 - CAST(c.price_per_unit AS REAL) / mm.max_min_price) * 100, 1) as discount
     FROM cheapest c
-    JOIN avg_prices a ON a.item_id = c.item_id
+    JOIN max_min mm ON mm.item_id = c.item_id
     JOIN items i ON i.item_id = c.item_id
     WHERE c.rn = 1
-      AND c.price_per_unit < a.recent_avg * (? / 100.0)`;
+      AND c.price_per_unit < mm.max_min_price * (? / 100.0)`;
 
   params.push(opts.maxPercentile);
 
