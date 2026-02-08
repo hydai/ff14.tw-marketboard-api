@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { withD1Retry } from "../utils/retry";
 
 // ── Items ──────────────────────────────────────────
 
@@ -65,7 +66,9 @@ export function getListingsByItemAndWorld(
 }
 
 export function deleteListingsForItem(db: D1Database, itemId: number) {
-  return db.prepare("DELETE FROM current_listings WHERE item_id = ?").bind(itemId).run();
+  return withD1Retry(() =>
+    db.prepare("DELETE FROM current_listings WHERE item_id = ?").bind(itemId).run()
+  );
 }
 
 // ── Price Snapshots ────────────────────────────────
@@ -149,12 +152,14 @@ export function getMeta(db: D1Database, key: string) {
 }
 
 export function setMeta(db: D1Database, key: string, value: string) {
-  return db
-    .prepare(
-      "INSERT INTO system_meta (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
-    )
-    .bind(key, value)
-    .run();
+  return withD1Retry(() =>
+    db
+      .prepare(
+        "INSERT INTO system_meta (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+      )
+      .bind(key, value)
+      .run()
+  );
 }
 
 // ── Item Tiers ─────────────────────────────────────

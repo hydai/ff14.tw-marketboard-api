@@ -4,6 +4,7 @@ import { UniversalisClient } from "../../services/universalis";
 import { KVCache } from "../../cache/kv";
 import { batchInsert } from "../../db/batch";
 import { createLogger } from "../../utils/logger";
+import { isTransientD1Error } from "../../utils/retry";
 import type { PriceSummary, UniversalisAggregatedItem } from "../../utils/types";
 import { WORLDS_BY_ID } from "../../config/datacenters";
 
@@ -29,6 +30,9 @@ export async function processFetchAggregated(
         itemId: result.itemId,
         error: String(err),
       });
+      if (isTransientD1Error(err)) {
+        throw err;
+      }
     }
   }
 

@@ -5,6 +5,7 @@ import { KVCache } from "../../cache/kv";
 import { batchInsert } from "../../db/batch";
 import { deleteListingsForItem } from "../../db/queries";
 import { createLogger } from "../../utils/logger";
+import { isTransientD1Error } from "../../utils/retry";
 import type { PriceSummary, UniversalisItemData, UniversalisListing, UniversalisSale } from "../../utils/types";
 import { median } from "../../utils/math";
 
@@ -36,6 +37,9 @@ export async function processFetchPrices(
         itemId,
         error: String(err),
       });
+      if (isTransientD1Error(err)) {
+        throw err;
+      }
     }
   }
 

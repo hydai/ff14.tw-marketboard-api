@@ -1,4 +1,5 @@
 import { createLogger } from "../utils/logger";
+import { withD1Retry } from "../utils/retry";
 
 const log = createLogger("db-batch");
 
@@ -33,10 +34,12 @@ export async function batchInsert(
     const bindings = batch.flat();
 
     try {
-      await db
-        .prepare(sql)
-        .bind(...bindings)
-        .run();
+      await withD1Retry(() =>
+        db
+          .prepare(sql)
+          .bind(...bindings)
+          .run()
+      );
     } catch (err) {
       log.error("Batch insert failed", {
         table,
@@ -63,10 +66,12 @@ export async function batchDelete(
     const sql = `DELETE FROM ${table} WHERE ${whereColumn} IN (${placeholders})`;
 
     try {
-      await db
-        .prepare(sql)
-        .bind(...batch)
-        .run();
+      await withD1Retry(() =>
+        db
+          .prepare(sql)
+          .bind(...batch)
+          .run()
+      );
     } catch (err) {
       log.error("Batch delete failed", { table, error: String(err) });
       throw err;
