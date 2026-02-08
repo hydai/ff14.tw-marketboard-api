@@ -24,20 +24,11 @@ export async function dispatch(env: Env): Promise<void> {
 
   const marketableSet = new Set(marketableItems);
 
-  // Determine which tiers to poll this cycle based on current minute
-  const now = new Date();
-  const minutesSinceMidnight = now.getUTCHours() * 60 + now.getUTCMinutes();
-
   let totalEnqueued = 0;
   let fetchPricesEnqueued = 0;
   let fetchAggregatedEnqueued = 0;
 
   for (const tierConfig of TIER_CONFIGS) {
-    // Check if this tier should fire this cycle
-    if (minutesSinceMidnight % tierConfig.frequencyMinutes !== 0) {
-      continue;
-    }
-
     // Read items assigned to this tier from D1
     const tierResult = await getItemsByTier(env.DB, tierConfig.tier);
     const tierItems = (tierResult.results ?? [])

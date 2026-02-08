@@ -21,15 +21,12 @@ export default {
 
     try {
       switch (controller.cron) {
-        case "*/5 * * * *":
-          await dispatch(env);
-          break;
-
         case "0 4 * * *":
           await runMaintenance(env.DB);
           break;
 
-        case "0 * * * *":
+        case "30 * * * *":
+          await dispatch(env);
           await runItemSync(env);
           await runAggregation(env.DB);
           break;

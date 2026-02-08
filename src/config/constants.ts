@@ -17,18 +17,18 @@ export interface TierConfig {
 }
 
 export const TIER_CONFIGS: TierConfig[] = [
-  { tier: 1, frequencyMinutes: 5, useAggregated: false },
-  { tier: 2, frequencyMinutes: 10, useAggregated: false },
-  { tier: 3, frequencyMinutes: 15, useAggregated: true },
+  { tier: 1, frequencyMinutes: 60, useAggregated: false },
+  { tier: 2, frequencyMinutes: 60, useAggregated: false },
+  { tier: 3, frequencyMinutes: 60, useAggregated: true },
 ];
 
 // Batch sizes
 export const QUEUE_BATCH_SIZE = 100; // items per queue message
 
 // KV TTLs (seconds)
-export const KV_TTL_LATEST_PRICE = 600;       // 10 min
-export const KV_TTL_LISTINGS = 600;            // 10 min
-export const KV_TTL_ANALYTICS = 600;           // 10 min
+export const KV_TTL_LATEST_PRICE = 3600;      // 1 hour
+export const KV_TTL_LISTINGS = 3600;           // 1 hour
+export const KV_TTL_ANALYTICS = 3600;          // 1 hour
 export const KV_TTL_MARKETABLE_ITEMS = 86400;  // 24 hours
 
 // Data retention (days)

@@ -6,9 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 # Cron triggers
 [triggers]
 crons = [
-  "*/5 * * * *",   # Every 5 min: dispatch price fetch tasks
   "0 4 * * *",     # Daily 04:00 UTC: maintenance (rollup + cleanup)
-  "0 * * * *",     # Hourly: item metadata sync
+  "30 * * * *",    # Hourly at :30: price dispatch + item sync + aggregation
 ]
 
 # D1 Database
