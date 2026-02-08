@@ -7,7 +7,8 @@ export async function runAggregation(db: D1Database): Promise<void> {
   log.info("Starting hourly aggregation");
   const start = Date.now();
 
-  // Step 1: Aggregate recent snapshots into hourly_aggregates (last 25 hours)
+  // Step 1: Aggregate recent snapshots into hourly_aggregates (last 2 hours)
+  // Only the most recent hour has new data; 2-hour window provides 1-run safety margin
   const rollupHourly = await db
     .prepare(
       `INSERT OR REPLACE INTO hourly_aggregates
@@ -27,7 +28,7 @@ export async function runAggregation(db: D1Database): Promise<void> {
          0,
          0
        FROM price_snapshots
-       WHERE snapshot_time >= datetime('now', '-25 hours')
+       WHERE snapshot_time >= datetime('now', '-2 hours')
        GROUP BY item_id, strftime('%Y-%m-%d %H:00:00', snapshot_time)`
     )
     .run();
@@ -37,7 +38,7 @@ export async function runAggregation(db: D1Database): Promise<void> {
   });
 
   // Step 2: Aggregate completed days from hourly_aggregates into daily_aggregates
-  // Only aggregate days strictly before today (UTC) to avoid partial-day data
+  // Only re-aggregate the last 2 days; older days are already finalized
   const rollupDaily = await db
     .prepare(
       `INSERT OR REPLACE INTO daily_aggregates
@@ -58,6 +59,7 @@ export async function runAggregation(db: D1Database): Promise<void> {
          SUM(total_sales_gil)
        FROM hourly_aggregates
        WHERE date(hour_timestamp) < date('now')
+         AND date(hour_timestamp) >= date('now', '-2 days')
        GROUP BY item_id, date(hour_timestamp)`
     )
     .run();
