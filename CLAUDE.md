@@ -20,12 +20,12 @@ npm run db:migrate:remote  # Run D1 migrations on production
 Single Cloudflare Worker, three entry points in `src/index.ts`:
 
 - **fetch** — Hono REST API, routes defined in `src/api/router.ts`
-- **scheduled** — Cron triggers: price dispatch (*/5 min), maintenance (04:00 UTC), item sync (06:00 UTC)
+- **scheduled** — Cron triggers: hourly at :30 (price dispatch + item sync + aggregation), daily maintenance (04:00 UTC)
 - **queue** — Processes `market-data` queue messages (fetch-prices, fetch-aggregated, compute-analytics)
 
 ### Data Flow
 
-1. Cron dispatches queue messages every 5 minutes
+1. Cron dispatches queue messages every hour
 2. Queue consumers fetch data from Universalis API and store in D1
 3. Analytics (arbitrage, deals, trending, velocity) are computed as queue jobs
 4. API reads from KV cache first, falls back to D1
@@ -57,7 +57,8 @@ src/
 ├── cron/
 │   ├── dispatcher.ts         # Queue message dispatch logic
 │   ├── item-sync.ts          # XIVAPI item metadata sync
-│   └── maintenance.ts        # Daily rollup + cleanup
+│   ├── aggregation.ts        # Hourly + daily price aggregation rollup
+│   └── maintenance.ts        # Daily cleanup (expired data deletion)
 ├── db/
 │   ├── queries.ts            # D1 SQL queries
 │   ├── batch.ts              # Batch insert/upsert helpers
@@ -96,6 +97,6 @@ KV cache stores camelCase (`PriceSummary`), D1 returns snake_case. The frontend 
 ## Important Notes
 
 - Queue concurrency is capped at 6 (`wrangler.toml`) to stay under Universalis's 8 connection limit
-- Items are tiered (1/2/3) for fetch priority — tier 1 items are fetched most frequently
+- Items are tiered (1/2/3) — all tiers fetch hourly; tier 3 uses the lighter aggregated API endpoint
 - D1 migrations live in `migrations/`; apply with `npm run db:migrate`
 - Placeholder IDs in `wrangler.toml` must be replaced with real resource IDs before deploying

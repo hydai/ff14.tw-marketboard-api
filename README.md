@@ -1,11 +1,11 @@
 # FFXIV Market Board — 陸行鳥 Datacenter
 
-Real-time market board price tracking, analytics, and cross-world arbitrage detection for the FFXIV Taiwan datacenter (陸行鳥). Built as a single Cloudflare Worker using D1, KV, and Queues.
+Hourly market board price tracking, analytics, and cross-world arbitrage detection for the FFXIV Taiwan datacenter (陸行鳥). Built as a single Cloudflare Worker using D1, KV, and Queues.
 
 ## Architecture
 
 ```
-  Universalis API ◄──── Cron (*/5 min) ────► Queue (market-data)
+  Universalis API ◄──── Cron (hourly) ─────► Queue (market-data)
         │                                          │
         ▼                                          ▼
   Fetch prices / aggregated data            Queue Consumer
@@ -22,7 +22,7 @@ A single Cloudflare Worker handles three entry points:
 | Handler     | Trigger                          | Purpose                                   |
 |-------------|----------------------------------|-------------------------------------------|
 | `fetch`     | HTTP requests                    | Hono REST API for clients                 |
-| `scheduled` | Cron (`*/5m`, `04:00`, `06:00`)  | Dispatch tasks, maintenance, item sync    |
+| `scheduled` | Cron (`hourly`, `04:00 daily`)   | Price dispatch + item sync, maintenance   |
 | `queue`     | Queue messages                   | Fetch prices, compute analytics           |
 
 ### Data Processing
