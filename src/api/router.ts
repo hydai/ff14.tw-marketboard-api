@@ -12,6 +12,14 @@ import { getStats } from "./handlers/stats";
 
 const app = new Hono<{ Bindings: Env }>();
 
+// Reject requests outside /api/v1 immediately
+app.use("*", async (c, next) => {
+  if (!c.req.path.startsWith("/api/v1")) {
+    return c.text("Not Found", 404);
+  }
+  await next();
+});
+
 // Global middleware
 app.use("*", corsMiddleware());
 app.use("*", requestLogger);
