@@ -44,6 +44,13 @@ export async function fetchCommand(opts: FetchOptions): Promise<void> {
 
   log.info("Marketable items fetched", { count: marketableItems.length });
 
+  const tieredCount = db.prepare("SELECT COUNT(*) as count FROM item_tiers").get() as { count: number };
+  if (tieredCount.count === 0) {
+    log.warn("No items in item_tiers table — run 'tsx src/cli.ts sync-items' first to populate item tiers");
+    db.close();
+    return;
+  }
+
   let totalProcessed = 0;
 
   for (const tierConfig of TIER_CONFIGS) {
