@@ -7,6 +7,42 @@ const log = createLogger("db-batch");
 // For batch inserts, we chunk rows to stay under this limit.
 const D1_MAX_PARAMS = 100;
 
+/**
+ * Same chunking logic as batchInsert, but returns D1PreparedStatement[]
+ * instead of executing them. Callers collect statements from multiple
+ * tables and run them in a single db.batch() call — one subrequest.
+ */
+export function prepareBatchStatements(
+  db: D1Database,
+  table: string,
+  columns: string[],
+  rows: unknown[][],
+  onConflict?: string
+): D1PreparedStatement[] {
+  if (rows.length === 0) return [];
+
+  const paramsPerRow = columns.length;
+  const maxRowsPerBatch = Math.floor(D1_MAX_PARAMS / paramsPerRow);
+  const stmts: D1PreparedStatement[] = [];
+
+  for (let i = 0; i < rows.length; i += maxRowsPerBatch) {
+    const batch = rows.slice(i, i + maxRowsPerBatch);
+    const placeholders = batch
+      .map((_, idx) => {
+        const offset = idx * paramsPerRow;
+        const params = columns.map((_, j) => `?${offset + j + 1}`).join(", ");
+        return `(${params})`;
+      })
+      .join(", ");
+
+    const conflict = onConflict ? ` ${onConflict}` : "";
+    const sql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders}${conflict}`;
+    stmts.push(db.prepare(sql).bind(...batch.flat()));
+  }
+
+  return stmts;
+}
+
 export async function batchInsert(
   db: D1Database,
   table: string,

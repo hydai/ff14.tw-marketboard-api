@@ -2,10 +2,9 @@ import type { Env, FetchPricesMessage } from "../../env";
 import { KV_TTL_LATEST_PRICE, KV_TTL_LISTINGS } from "../../config/constants";
 import { UniversalisClient } from "../../services/universalis";
 import { KVCache } from "../../cache/kv";
-import { batchInsert } from "../../db/batch";
-import { deleteListingsForItem } from "../../db/queries";
+import { prepareBatchStatements } from "../../db/batch";
 import { createLogger } from "../../utils/logger";
-import { isTransientD1Error } from "../../utils/retry";
+import { isTransientD1Error, withD1Retry } from "../../utils/retry";
 import type { PriceSummary, UniversalisItemData, UniversalisListing, UniversalisSale } from "../../utils/types";
 import { median } from "../../utils/math";
 
@@ -53,42 +52,13 @@ async function processItem(
   data: UniversalisItemData,
   snapshotTime: string
 ): Promise<void> {
-  // 1. Delete existing listings and insert new ones
-  await deleteListingsForItem(env.DB, itemId);
+  // 1. KV read FIRST — needed to filter sales, no D1 dependency
+  const lastSaleTs = data.recentHistory.length > 0
+    ? await cache.getJSON<number>(KVCache.lastSaleTimestampKey(itemId))
+    : null;
+  const cutoff = lastSaleTs ?? 0;
 
-  if (data.listings.length > 0) {
-    const listingRows = data.listings.map((l: UniversalisListing) => [
-      l.listingID,
-      itemId,
-      l.worldID,
-      l.worldName,
-      l.pricePerUnit,
-      l.quantity,
-      l.total,
-      l.tax,
-      l.hq ? 1 : 0,
-      l.retainerName,
-      l.retainerCity,
-      l.creatorName,
-      new Date(l.lastReviewTime * 1000).toISOString(),
-      snapshotTime,
-    ]);
-
-    await batchInsert(
-      env.DB,
-      "current_listings",
-      [
-        "listing_id", "item_id", "world_id", "world_name",
-        "price_per_unit", "quantity", "total", "tax",
-        "hq", "retainer_name", "retainer_city", "creator_name",
-        "last_review_time", "fetched_at",
-      ],
-      listingRows,
-      "ON CONFLICT(item_id, world_id, listing_id) DO UPDATE SET price_per_unit = excluded.price_per_unit, quantity = excluded.quantity, total = excluded.total, fetched_at = excluded.fetched_at"
-    );
-  }
-
-  // 2. Insert DC-level price snapshot (median instead of Universalis mean)
+  // 2. Compute derived values (pure data, no I/O)
   const dcNqListings = data.listings.filter((l) => !l.hq);
   const dcHqListings = data.listings.filter((l) => l.hq);
   const medianNQ = dcNqListings.length > 0
@@ -108,7 +78,49 @@ async function processItem(
     ? (cheapestNQ.pricePerUnit <= cheapestHQ.pricePerUnit ? cheapestNQ : cheapestHQ)
     : cheapestNQ ?? cheapestHQ;
 
-  await batchInsert(
+  // 3. Prepare all D1 statements (no execution yet)
+  const stmts: D1PreparedStatement[] = [];
+
+  // DELETE existing listings
+  stmts.push(
+    env.DB.prepare("DELETE FROM current_listings WHERE item_id = ?").bind(itemId)
+  );
+
+  // INSERT listings
+  if (data.listings.length > 0) {
+    const listingRows = data.listings.map((l: UniversalisListing) => [
+      l.listingID,
+      itemId,
+      l.worldID,
+      l.worldName,
+      l.pricePerUnit,
+      l.quantity,
+      l.total,
+      l.tax,
+      l.hq ? 1 : 0,
+      l.retainerName,
+      l.retainerCity,
+      l.creatorName,
+      new Date(l.lastReviewTime * 1000).toISOString(),
+      snapshotTime,
+    ]);
+
+    stmts.push(...prepareBatchStatements(
+      env.DB,
+      "current_listings",
+      [
+        "listing_id", "item_id", "world_id", "world_name",
+        "price_per_unit", "quantity", "total", "tax",
+        "hq", "retainer_name", "retainer_city", "creator_name",
+        "last_review_time", "fetched_at",
+      ],
+      listingRows,
+      "ON CONFLICT(item_id, world_id, listing_id) DO UPDATE SET price_per_unit = excluded.price_per_unit, quantity = excluded.quantity, total = excluded.total, fetched_at = excluded.fetched_at"
+    ));
+  }
+
+  // INSERT price snapshot
+  stmts.push(...prepareBatchStatements(
     env.DB,
     "price_snapshots",
     [
@@ -133,13 +145,10 @@ async function processItem(
       cheapestOverall?.worldID ?? null,
       cheapestOverall?.worldName ?? null,
     ]]
-  );
+  ));
 
-  // 3. Insert only genuinely new sales (filter by last-seen timestamp in KV)
+  // INSERT new sales (filtered by KV timestamp)
   if (data.recentHistory.length > 0) {
-    const lastSaleTs = await cache.getJSON<number>(KVCache.lastSaleTimestampKey(itemId));
-    const cutoff = lastSaleTs ?? 0;
-
     const newSales = data.recentHistory.filter((s: UniversalisSale) => s.timestamp > cutoff);
 
     if (newSales.length > 0) {
@@ -155,7 +164,7 @@ async function processItem(
         new Date(s.timestamp * 1000).toISOString(),
       ]);
 
-      await batchInsert(
+      stmts.push(...prepareBatchStatements(
         env.DB,
         "sales_history",
         [
@@ -165,17 +174,21 @@ async function processItem(
         ],
         saleRows,
         "ON CONFLICT DO NOTHING"
-      );
+      ));
     }
+  }
 
-    // Update KV with the most recent sale timestamp
+  // 4. Execute ALL D1 ops as a single subrequest
+  await withD1Retry(() => env.DB.batch(stmts));
+
+  // 5. KV writes
+  if (data.recentHistory.length > 0) {
     const maxTs = Math.max(...data.recentHistory.map((s: UniversalisSale) => s.timestamp));
     if (maxTs > cutoff) {
       await cache.putJSON(KVCache.lastSaleTimestampKey(itemId), maxTs, KV_TTL_LATEST_PRICE);
     }
   }
 
-  // 4. Update KV cache with latest price summary
   const priceSummary: PriceSummary = {
     itemId,
     minPriceNQ: data.minPriceNQ || null,
@@ -191,7 +204,6 @@ async function processItem(
 
   await cache.putJSON(KVCache.latestPriceKey(itemId), priceSummary, KV_TTL_LATEST_PRICE);
 
-  // 5. Update KV cache with listings
   const listingsCache = data.listings.map((l: UniversalisListing) => ({
     listingId: l.listingID,
     worldName: l.worldName,
