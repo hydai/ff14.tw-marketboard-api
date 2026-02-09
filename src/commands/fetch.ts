@@ -1,14 +1,12 @@
 import { resolve } from "node:path";
 import { openDatabase, runMigrations } from "../db/database.js";
-import { getItemsByTier, setMeta } from "../db/queries.js";
-import { TIER_CONFIGS, UNIVERSALIS_ITEMS_PER_REQUEST, UNIVERSALIS_MAX_CONCURRENT, QUEUE_BATCH_SIZE } from "../config/constants.js";
+import { setMeta } from "../db/queries.js";
+import { TIER_CONFIGS, UNIVERSALIS_MAX_CONCURRENT } from "../config/constants.js";
 import { UniversalisClient } from "../services/universalis.js";
-import { processFetchPrices } from "../processors/fetch-prices.js";
-import { processFetchAggregated } from "../processors/fetch-aggregated.js";
 import { processComputeAnalytics } from "../processors/compute-analytics.js";
+import { fetchTierItems } from "../processors/tier-fetcher.js";
 import { runAggregation } from "../cron/aggregation.js";
 import { RateLimiter } from "../utils/rate-limiter.js";
-import { chunk } from "../utils/math.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("fetch-cmd");
@@ -55,37 +53,7 @@ export async function fetchCommand(opts: FetchOptions): Promise<void> {
 
   for (const tierConfig of TIER_CONFIGS) {
     if (tierFilter && tierConfig.tier !== tierFilter) continue;
-
-    const tierItems = getItemsByTier(db, tierConfig.tier)
-      .map((r) => r.item_id)
-      .filter((id) => marketableSet.has(id));
-
-    if (tierItems.length === 0) {
-      log.info("No items for tier", { tier: tierConfig.tier });
-      continue;
-    }
-
-    log.info("Processing tier", {
-      tier: tierConfig.tier,
-      itemCount: tierItems.length,
-      useAggregated: tierConfig.useAggregated,
-    });
-
-    const batchSize = tierConfig.useAggregated
-      ? QUEUE_BATCH_SIZE
-      : UNIVERSALIS_ITEMS_PER_REQUEST;
-    const batches = chunk(tierItems, batchSize);
-
-    const tasks = batches.map((batch) => async () => {
-      if (tierConfig.useAggregated) {
-        await processFetchAggregated(db, batch);
-      } else {
-        await processFetchPrices(db, batch, tierConfig.tier as 1 | 2 | 3);
-      }
-    });
-
-    await limiter.runAll(tasks);
-    totalProcessed += tierItems.length;
+    totalProcessed += await fetchTierItems(db, tierConfig, marketableSet, limiter);
   }
 
   // Run aggregation after all fetches

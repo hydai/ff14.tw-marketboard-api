@@ -17,10 +17,13 @@ export interface TierConfig {
 }
 
 export const TIER_CONFIGS: TierConfig[] = [
-  { tier: 1, frequencyMinutes: 60, useAggregated: false },
-  { tier: 2, frequencyMinutes: 60, useAggregated: false },
+  { tier: 1, frequencyMinutes: 5, useAggregated: false },
+  { tier: 2, frequencyMinutes: 30, useAggregated: false },
   { tier: 3, frequencyMinutes: 60, useAggregated: false },
 ];
+
+// Update command thresholds
+export const UPDATE_LONG_RUNNING_THRESHOLD_MS = 4 * 60 * 1000;
 
 // Batch sizes
 export const QUEUE_BATCH_SIZE = 100; // items per processing batch

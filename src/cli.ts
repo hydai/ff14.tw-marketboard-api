@@ -7,6 +7,7 @@ import { aggregateCommand } from "./commands/aggregate.js";
 import { maintainCommand } from "./commands/maintain.js";
 import { statsCommand } from "./commands/stats.js";
 import { serveCommand } from "./commands/serve.js";
+import { updateCommand } from "./commands/update.js";
 
 const program = new Command();
 
@@ -61,5 +62,13 @@ program
   .option("--db <path>", "SQLite file path", "./data/marketboard.db")
   .option("--port <port>", "Port to listen on", "3000")
   .action(serveCommand);
+
+program
+  .command("update")
+  .description("Cron-friendly update: fetch only tiers whose polling interval has elapsed")
+  .option("--db <path>", "SQLite file path", "./data/marketboard.db")
+  .option("--concurrency <n>", "Max concurrent HTTP requests (max 8)", "8")
+  .option("--verbose", "Debug logging")
+  .action(updateCommand);
 
 program.parse();

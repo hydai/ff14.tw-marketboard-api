@@ -12,6 +12,7 @@
     "maintain": "tsx src/cli.ts maintain",
     "stats": "tsx src/cli.ts stats",
     "serve": "tsx src/cli.ts serve",
+    "update": "tsx src/cli.ts update",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
