@@ -18,8 +18,8 @@ export interface TierConfig {
 
 export const TIER_CONFIGS: TierConfig[] = [
   { tier: 1, frequencyMinutes: 60, useAggregated: false },
-  { tier: 2, frequencyMinutes: 60, useAggregated: true },
-  { tier: 3, frequencyMinutes: 60, useAggregated: true },
+  { tier: 2, frequencyMinutes: 60, useAggregated: false },
+  { tier: 3, frequencyMinutes: 60, useAggregated: false },
 ];
 
 // Batch sizes
