@@ -7,6 +7,7 @@ import {
 import { chunk } from "../utils/math.js";
 import { DC_LUHANGNIAO } from "../config/datacenters.js";
 import { createLogger } from "../utils/logger.js";
+import { retryWithBackoff } from "../utils/rate-limiter.js";
 import type {
   UniversalisMultiResponse,
   UniversalisAggregatedResponse,
@@ -41,7 +42,7 @@ export class UniversalisClient {
     for (const batch of batches) {
       const ids = batch.join(",");
       const url = `${this.baseUrl}/${encodeURIComponent(this.dcName)}/${ids}?listings=20&entries=20`;
-      const resp = (await this.request(url)) as UniversalisMultiResponse;
+      const resp = await this.requestWithRetry<UniversalisMultiResponse>(url);
       merged.itemIDs.push(...resp.itemIDs);
       Object.assign(merged.items, resp.items);
     }
@@ -61,7 +62,7 @@ export class UniversalisClient {
     for (const batch of batches) {
       const ids = batch.join(",");
       const url = `${this.baseUrl}/aggregated/${encodeURIComponent(this.dcName)}/${ids}`;
-      const resp = (await this.request(url)) as UniversalisAggregatedResponse;
+      const resp = await this.requestWithRetry<UniversalisAggregatedResponse>(url);
       merged.results.push(...resp.results);
       merged.failedItems.push(...resp.failedItems);
     }
@@ -72,15 +73,22 @@ export class UniversalisClient {
   async fetchMarketableItems(): Promise<number[]> {
     const url = `${this.baseUrl}/marketable`;
     log.info("Fetching marketable item list");
-    const resp = await this.request(url);
-    return resp as number[];
+    return this.requestWithRetry<number[]>(url);
   }
 
   async fetchTaxRates(worldId: number): Promise<UniversalisTaxRates> {
     const url = `${this.baseUrl}/tax-rates?world=${worldId}`;
     log.info("Fetching tax rates", { worldId });
-    const resp = await this.request(url);
-    return resp as UniversalisTaxRates;
+    return this.requestWithRetry<UniversalisTaxRates>(url);
+  }
+
+  private requestWithRetry<T>(url: string): Promise<T> {
+    return retryWithBackoff(() => this.request(url) as Promise<T>, {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      getRetryDelayMs: (err) =>
+        err instanceof RateLimitedError ? err.retryAfterSeconds * 1000 : undefined,
+    });
   }
 
   private async request(url: string): Promise<unknown> {

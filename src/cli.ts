@@ -26,7 +26,7 @@ program
   .description("Fetch prices for all tiered items (full hourly cycle)")
   .option("--db <path>", "SQLite file path", "./data/marketboard.db")
   .option("--tier <tier>", "Only fetch a specific tier (1, 2, or 3)")
-  .option("--concurrency <n>", "Max concurrent HTTP requests", "6")
+  .option("--concurrency <n>", "Max concurrent HTTP requests (max 8)", "8")
   .option("--verbose", "Debug logging")
   .action(fetchCommand);
 

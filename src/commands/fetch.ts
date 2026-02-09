@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { openDatabase, runMigrations } from "../db/database.js";
 import { getItemsByTier, setMeta } from "../db/queries.js";
-import { TIER_CONFIGS, UNIVERSALIS_ITEMS_PER_REQUEST, QUEUE_BATCH_SIZE } from "../config/constants.js";
+import { TIER_CONFIGS, UNIVERSALIS_ITEMS_PER_REQUEST, UNIVERSALIS_MAX_CONCURRENT, QUEUE_BATCH_SIZE } from "../config/constants.js";
 import { UniversalisClient } from "../services/universalis.js";
 import { processFetchPrices } from "../processors/fetch-prices.js";
 import { processFetchAggregated } from "../processors/fetch-aggregated.js";
@@ -26,7 +26,14 @@ export async function fetchCommand(opts: FetchOptions): Promise<void> {
   const migrationsDir = resolve(import.meta.dirname, "../../migrations");
   runMigrations(db, migrationsDir);
 
-  const concurrency = parseInt(opts.concurrency, 10) || 6;
+  const parsed = parseInt(opts.concurrency, 10) || UNIVERSALIS_MAX_CONCURRENT;
+  const concurrency = Math.min(parsed, UNIVERSALIS_MAX_CONCURRENT);
+  if (parsed > UNIVERSALIS_MAX_CONCURRENT) {
+    log.warn("Concurrency capped at UNIVERSALIS_MAX_CONCURRENT", {
+      requested: parsed,
+      capped: UNIVERSALIS_MAX_CONCURRENT,
+    });
+  }
   const limiter = new RateLimiter(concurrency);
   const tierFilter = opts.tier ? parseInt(opts.tier, 10) : undefined;
 

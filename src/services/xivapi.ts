@@ -1,5 +1,6 @@
 import { XIVAPI_BASE_URL, XIVAPI_BATCH_ROWS } from "../config/constants.js";
 import { createLogger } from "../utils/logger.js";
+import { retryWithBackoff } from "../utils/rate-limiter.js";
 import type { XIVAPIItem } from "../utils/types.js";
 
 const log = createLogger("xivapi");
@@ -24,6 +25,29 @@ export class XIVAPIClient {
     this.baseUrl = XIVAPI_BASE_URL;
   }
 
+  private async request<T>(url: string): Promise<T> {
+    const resp = await fetch(url, {
+      headers: {
+        "User-Agent": "ff14-tw-marketboard/1.0",
+        Accept: "application/json",
+      },
+    });
+
+    if (resp.status === 429) {
+      const retryAfter = parseInt(resp.headers.get("retry-after") ?? "", 10) || 5;
+      log.warn("Rate limited by XIVAPI", { retryAfter, url });
+      throw new Error(`XIVAPI rate limited. Retry after ${retryAfter}s`);
+    }
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      log.error("XIVAPI API error", { status: resp.status, url, body: text.slice(0, 200) });
+      throw new Error(`XIVAPI API error: ${resp.status}`);
+    }
+
+    return resp.json() as Promise<T>;
+  }
+
   async fetchItemsBatchV2(
     itemIds: number[],
     language?: string
@@ -36,25 +60,11 @@ export class XIVAPIClient {
       const langParam = language ? `&language=${language}` : "";
       const url = `${this.baseUrl}/sheet/Item?fields=Name,Icon,ItemSearchCategory.Name,CanBeHq,StackSize&rows=${rowsParam}${langParam}`;
 
-      try {
-        const resp = await fetch(url, {
-          headers: {
-            "User-Agent": "ff14-tw-marketboard/1.0",
-            Accept: "application/json",
-          },
-        });
-
-        if (!resp.ok) {
-          log.error("XIVAPI batch error", { status: resp.status, batchSize: batch.length });
-          throw new Error(`XIVAPI batch error: ${resp.status}`);
-        }
-
-        const data = (await resp.json()) as XIVAPIBatchResponse;
-        results.push(...data.rows);
-      } catch (err) {
-        log.error("XIVAPI batch fetch failed", { offset: i, error: String(err) });
-        throw err;
-      }
+      const data = await retryWithBackoff(
+        () => this.request<XIVAPIBatchResponse>(url),
+        { maxRetries: 3, baseDelayMs: 1000 },
+      );
+      results.push(...data.rows);
     }
 
     return results;
@@ -72,19 +82,10 @@ export class XIVAPIClient {
       const url = `${this.baseUrl}/sheet/Item?fields=Name&language=${language}&rows=${rowsParam}`;
 
       try {
-        const resp = await fetch(url, {
-          headers: {
-            "User-Agent": "ff14-tw-marketboard/1.0",
-            Accept: "application/json",
-          },
-        });
-
-        if (!resp.ok) {
-          log.warn("XIVAPI name batch failed", { status: resp.status });
-          continue;
-        }
-
-        const data = (await resp.json()) as XIVAPINameBatchResponse;
+        const data = await retryWithBackoff(
+          () => this.request<XIVAPINameBatchResponse>(url),
+          { maxRetries: 3, baseDelayMs: 1000 },
+        );
         for (const row of data.rows) {
           nameMap.set(row.row_id, row.fields.Name);
         }

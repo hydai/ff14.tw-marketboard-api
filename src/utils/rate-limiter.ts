@@ -48,7 +48,12 @@ export class RateLimiter {
 
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
-  opts: { maxRetries?: number; baseDelayMs?: number } = {},
+  opts: {
+    maxRetries?: number;
+    baseDelayMs?: number;
+    /** If provided, called to extract a specific delay from the error (e.g. Retry-After). */
+    getRetryDelayMs?: (err: unknown) => number | undefined;
+  } = {},
 ): Promise<T> {
   const maxRetries = opts.maxRetries ?? 3;
   const baseDelay = opts.baseDelayMs ?? 1000;
@@ -59,7 +64,8 @@ export async function retryWithBackoff<T>(
     } catch (err) {
       if (attempt === maxRetries) throw err;
 
-      const delay = baseDelay * Math.pow(2, attempt) + Math.random() * baseDelay * 0.5;
+      const retryDelay = opts.getRetryDelayMs?.(err);
+      const delay = retryDelay ?? baseDelay * Math.pow(2, attempt) + Math.random() * baseDelay * 0.5;
       log.warn("Retrying after error", {
         attempt: attempt + 1,
         maxRetries,
