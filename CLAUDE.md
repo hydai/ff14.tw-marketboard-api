@@ -8,7 +8,8 @@ Local CLI tool that tracks FFXIV market board prices for the Taiwan datacenter (
 
 ```bash
 tsx src/cli.ts init             # Create/migrate the SQLite database
-tsx src/cli.ts fetch            # Fetch prices for all tiered items
+tsx src/cli.ts fetch            # Fetch prices for all tiered items (full manual refresh)
+tsx src/cli.ts update           # Cron-friendly: fetch only tiers whose interval has elapsed
 tsx src/cli.ts sync-items       # Sync item metadata from XIVAPI
 tsx src/cli.ts aggregate        # Run hourly aggregation rollup
 tsx src/cli.ts maintain         # Run daily maintenance (cleanup + tier reclassification)
@@ -30,10 +31,20 @@ Local CLI (`tsx src/cli.ts <command>`) with direct SQLite access via `better-sql
 
 ### Data Flow
 
-1. User runs `tsx src/cli.ts fetch` manually (replaces cron + queue)
+1. `fetch` runs a full manual refresh; `update` is cron-friendly (only fetches due tiers)
 2. Processors fetch data from Universalis API with rate limiting
 3. Data stored directly in local SQLite via `better-sqlite3`
 4. API reads directly from SQLite (sub-millisecond locally, no cache layer needed)
+
+### Tier Polling Frequencies
+
+| Tier | Frequency | Items | Trigger |
+|------|-----------|-------|---------|
+| 1 | 5 min | High-velocity (>10 sales/day) | Every cron tick |
+| 2 | 30 min | Medium-velocity (2-10 sales/day) | Every 6th tick |
+| 3 | 60 min | Low-velocity (<2 sales/day) | Every 12th tick |
+
+The `update` command tracks per-tier timestamps (`last_fetch_tier_1/2/3` in `system_meta`) and only fetches tiers whose interval has elapsed. It also auto-runs maintenance (daily) and warns if item sync is stale (>7 days).
 
 ## Coding Conventions
 
@@ -51,7 +62,8 @@ src/
 ├── cli.ts                    # CLI entry point (commander)
 ├── commands/                 # CLI command handlers
 │   ├── init.ts               # Create/migrate database
-│   ├── fetch.ts              # Full hourly fetch cycle
+│   ├── fetch.ts              # Full manual fetch (all tiers)
+│   ├── update.ts             # Cron-friendly tier-aware update
 │   ├── sync.ts               # XIVAPI item metadata sync
 │   ├── aggregate.ts          # Hourly aggregation rollup
 │   ├── maintain.ts           # Daily maintenance
@@ -64,6 +76,7 @@ src/
 ├── processors/               # Data processing
 │   ├── fetch-prices.ts       # Full listing fetch + store
 │   ├── fetch-aggregated.ts   # Aggregated price fetch + store
+│   ├── tier-fetcher.ts       # Shared per-tier fetch loop (used by fetch + update)
 │   ├── compute-analytics.ts  # Analytics computation
 │   └── sync-items.ts         # XIVAPI item sync
 ├── config/
@@ -82,6 +95,7 @@ src/
 │   └── xivapi.ts             # XIVAPI client
 └── utils/
     ├── logger.ts             # Structured logger
+    ├── lock.ts               # PID-based lock file for cron safety
     ├── math.ts               # Statistics helpers (median, stddev)
     ├── rate-limiter.ts       # Concurrency limiter for HTTP requests
     └── types.ts              # Shared type definitions
@@ -108,6 +122,7 @@ Instead of KV-based `lastSaleTs`, the CLI version queries `SELECT MAX(sold_at) F
 ## Important Notes
 
 - Rate limiting uses a semaphore-based `RateLimiter` (max 8 concurrent, capped at `UNIVERSALIS_MAX_CONCURRENT`) with `retryWithBackoff` for 429 handling on both Universalis and XIVAPI
-- Items are tiered (1/2/3) — tier 3 uses the lighter aggregated API endpoint
+- Items are tiered (1/2/3) with different polling frequencies (5/30/60 min)
+- The `update` command uses a PID-based lock file (`./data/marketboard.lock`) to prevent overlapping cron runs
 - Migrations live in `migrations/`; applied automatically on database open
 - SQLite database defaults to `./data/marketboard.db`

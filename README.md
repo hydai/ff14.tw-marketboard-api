@@ -22,7 +22,8 @@ The CLI (`tsx src/cli.ts <command>`) orchestrates all operations:
 | Command       | Purpose                                      |
 |---------------|----------------------------------------------|
 | `init`        | Create/migrate the SQLite database            |
-| `fetch`       | Fetch prices for all tiered items             |
+| `fetch`       | Fetch prices for all tiered items (full manual refresh) |
+| `update`      | Cron-friendly: fetch only tiers whose interval has elapsed |
 | `sync-items`  | Sync item metadata from XIVAPI               |
 | `aggregate`   | Run hourly aggregation rollup                 |
 | `maintain`    | Daily cleanup + tier reclassification         |
@@ -106,10 +107,30 @@ tsx src/cli.ts sync-items
 ### 4. Fetch prices
 
 ```bash
+# Full manual refresh (all tiers)
 tsx src/cli.ts fetch
+
+# Or use the cron-friendly update (only fetches due tiers)
+tsx src/cli.ts update
 ```
 
-### 5. (Optional) Start the API server
+### 5. (Optional) Set up cron for automatic updates
+
+```bash
+# Run every 5 minutes — only fetches tiers whose interval has elapsed
+*/5 * * * * cd /path/to/ff14.tw-marketboard-api && tsx src/cli.ts update >> ./data/update.log 2>&1
+```
+
+Tier polling frequencies:
+| Tier | Frequency | Items |
+|------|-----------|-------|
+| 1 | 5 min | High-velocity (>10 sales/day) |
+| 2 | 30 min | Medium-velocity (2-10 sales/day) |
+| 3 | 60 min | Low-velocity (<2 sales/day) |
+
+The `update` command uses a lock file to prevent overlapping runs, auto-runs daily maintenance, and warns if item metadata sync is stale.
+
+### 6. (Optional) Start the API server
 
 ```bash
 tsx src/cli.ts serve
