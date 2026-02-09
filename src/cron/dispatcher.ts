@@ -1,5 +1,5 @@
 import type { Env } from "../env";
-import { QUEUE_BATCH_SIZE, TIER_CONFIGS, KV_TTL_MARKETABLE_ITEMS } from "../config/constants";
+import { QUEUE_BATCH_SIZE, TIER_CONFIGS, KV_TTL_MARKETABLE_ITEMS, UNIVERSALIS_ITEMS_PER_REQUEST } from "../config/constants";
 import { UniversalisClient } from "../services/universalis";
 import { KVCache } from "../cache/kv";
 import { getItemsByTier, setMeta } from "../db/queries";
@@ -46,8 +46,12 @@ export async function dispatch(env: Env): Promise<void> {
       useAggregated: tierConfig.useAggregated,
     });
 
-    // Chunk items into batches of QUEUE_BATCH_SIZE and enqueue
-    const batches = chunk(tierItems, QUEUE_BATCH_SIZE);
+    // Non-aggregated (fetch-prices) messages use smaller batches to stay under
+    // the 1000-subrequest-per-invocation limit imposed by Cloudflare Workers.
+    const batchSize = tierConfig.useAggregated
+      ? QUEUE_BATCH_SIZE
+      : UNIVERSALIS_ITEMS_PER_REQUEST;
+    const batches = chunk(tierItems, batchSize);
     for (const batch of batches) {
       if (tierConfig.useAggregated) {
         await env.MARKET_QUEUE.send(createFetchAggregatedMessage(batch));
