@@ -1,46 +1,49 @@
 # FFXIV Market Board — 陸行鳥 Datacenter
 
-Hourly market board price tracking, analytics, and cross-world arbitrage detection for the FFXIV Taiwan datacenter (陸行鳥). Built as a single Cloudflare Worker using D1, KV, and Queues.
+Local CLI tool for tracking FFXIV market board prices, analytics, and cross-world arbitrage detection for the Taiwan datacenter (陸行鳥). Uses SQLite for storage and optionally serves a Hono REST API.
 
 ## Architecture
 
 ```
-  Universalis API ◄──── Cron (hourly) ─────► Queue (market-data)
-        │                                          │
-        ▼                                          ▼
-  Fetch prices / aggregated data            Queue Consumer
-        │                                    ├─ fetch-prices
-        ▼                                    ├─ fetch-aggregated
-    D1 Database ◄───────────────────────────►└─ compute-analytics
-        │
-        ▼
-    KV Cache ◄──── Read-through ────► Hono API ──► /api/v1/*
+  Universalis API ◄──── CLI: fetch ────► Processors
+        │                                    │
+        ▼                                    ▼
+  Fetch prices / aggregated data        SQLite Database
+                                             │
+  XIVAPI ◄──── CLI: sync-items              ▼
+        │                              CLI: serve
+        ▼                                    │
+  Item metadata ──► SQLite                   ▼
+                                       Hono API ──► /api/v1/*
 ```
 
-A single Cloudflare Worker handles three entry points:
+The CLI (`tsx src/cli.ts <command>`) orchestrates all operations:
 
-| Handler     | Trigger                          | Purpose                                   |
-|-------------|----------------------------------|-------------------------------------------|
-| `fetch`     | HTTP requests                    | Hono REST API for clients                 |
-| `scheduled` | Cron (`hourly`, `04:00 daily`)   | Price dispatch + item sync, maintenance   |
-| `queue`     | Queue messages                   | Fetch prices, compute analytics           |
+| Command       | Purpose                                      |
+|---------------|----------------------------------------------|
+| `init`        | Create/migrate the SQLite database            |
+| `fetch`       | Fetch prices for all tiered items             |
+| `sync-items`  | Sync item metadata from XIVAPI               |
+| `aggregate`   | Run hourly aggregation rollup                 |
+| `maintain`    | Daily cleanup + tier reclassification         |
+| `stats`       | Print database statistics                     |
+| `serve`       | Start local HTTP API server (default port 3000)|
 
 ### Data Processing
 
-- **fetch-prices** — Fetches full listing data per item, stores listings + snapshots + sales in D1, caches summary in KV
-- **fetch-aggregated** — Fetches aggregated min/avg/velocity data, stores snapshots in D1, caches summary in KV
+- **fetch-prices** — Fetches full listing data per item, stores listings + snapshots + sales in SQLite
+- **fetch-aggregated** — Fetches aggregated min/avg/velocity data, stores snapshots in SQLite
 - Both processors determine the **cheapest world** by comparing NQ and HQ min prices across all worlds
 
 ## Tech Stack
 
-- **Runtime**: Cloudflare Workers
-- **Framework**: [Hono](https://hono.dev) v4
-- **Database**: Cloudflare D1 (SQLite)
-- **Cache**: Cloudflare KV (read-first layer)
-- **Queue**: Cloudflare Queues (background processing)
+- **Runtime**: Node.js with [tsx](https://github.com/privatenumber/tsx)
+- **CLI**: [Commander](https://github.com/tj/commander.js)
+- **Framework**: [Hono](https://hono.dev) v4 on `@hono/node-server`
+- **Database**: SQLite via [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
 - **Validation**: [Zod](https://zod.dev) v4
 - **Language**: TypeScript (strict mode)
-- **Testing**: Vitest with `@cloudflare/vitest-pool-workers`
+- **Testing**: [Vitest](https://vitest.dev)
 
 ## API Endpoints
 
@@ -81,65 +84,51 @@ All endpoints are under `/api/v1`.
 ### Prerequisites
 
 - Node.js 20+
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) (`npm i -g wrangler`)
-- Cloudflare account
 
-### 1. Create resources
-
-```bash
-# D1 database
-wrangler d1 create marketboard-db
-
-# KV namespace
-wrangler kv namespace create KV
-
-# Queue
-wrangler queues create market-data
-```
-
-### 2. Configure wrangler.toml
-
-Replace the placeholder IDs in `wrangler.toml` with the real IDs output by the commands above:
-
-- `d1_databases.database_id`
-- `kv_namespaces.id`
-
-### 3. Install dependencies
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-### 4. Run database migrations
+### 2. Initialize the database
 
 ```bash
-# Local
-npm run db:migrate
+tsx src/cli.ts init
+```
 
-# Remote (production)
-npm run db:migrate:remote
+### 3. Sync item metadata
+
+```bash
+tsx src/cli.ts sync-items
+```
+
+### 4. Fetch prices
+
+```bash
+tsx src/cli.ts fetch
+```
+
+### 5. (Optional) Start the API server
+
+```bash
+tsx src/cli.ts serve
 ```
 
 ## Development
 
 ```bash
-# Start local dev server
-npm run dev
-
 # Run tests
 npm test
 
 # Type check
 npm run typecheck
-
-# Deploy to Cloudflare
-npm run deploy
 ```
 
 ## External APIs
 
-- **[Universalis](https://universalis.app/docs)** — Market board price data (listings, history, sales)
-- **[XIVAPI](https://xivapi.com/docs)** — Item metadata (names, categories, icons)
+- **[Universalis](https://universalis.app/docs)** — Market board price data (listings, history, sales). Rate limit: 25 req/s sustained, 8 max concurrent.
+- **[XIVAPI](https://xivapi.com/docs)** — Item metadata (names, categories, icons). Rate limit: ~20 req/s.
 
 ## License
 

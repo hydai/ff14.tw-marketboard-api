@@ -107,7 +107,7 @@ Instead of KV-based `lastSaleTs`, the CLI version queries `SELECT MAX(sold_at) F
 
 ## Important Notes
 
-- Rate limiting uses a semaphore-based `RateLimiter` (max 6 concurrent by default)
+- Rate limiting uses a semaphore-based `RateLimiter` (max 8 concurrent, capped at `UNIVERSALIS_MAX_CONCURRENT`) with `retryWithBackoff` for 429 handling on both Universalis and XIVAPI
 - Items are tiered (1/2/3) — tier 3 uses the lighter aggregated API endpoint
 - Migrations live in `migrations/`; applied automatically on database open
 - SQLite database defaults to `./data/marketboard.db`
