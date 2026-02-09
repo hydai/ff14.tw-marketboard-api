@@ -1,7 +1,7 @@
 import { Context } from "hono";
 import type Database from "better-sqlite3";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../config/constants.js";
-import { getTrending } from "../../db/queries.js";
+import { getTrending, getTrendingDiagnostics } from "../../db/queries.js";
 import { HTTPError } from "../middleware.js";
 
 type AppEnv = { Variables: { db: Database.Database } };
@@ -29,5 +29,7 @@ export function listTrending(c: Context<AppEnv>) {
     limit,
   });
 
-  return c.json({ data, direction, period });
+  const diagnostics = getTrendingDiagnostics(db, { period });
+
+  return c.json({ data, direction, period, diagnostics });
 }

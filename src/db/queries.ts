@@ -256,6 +256,35 @@ export function getDeals(
 
 // ── Trending ───────────────────────────────────────
 
+export function getTrendingDiagnostics(
+  db: Database.Database,
+  opts: { period: string }
+) {
+  const periodHours = opts.period === "1d" ? 24 : opts.period === "7d" ? 168 : 72;
+  const midpointISO = isoTimeAgo(Math.floor(periodHours / 2));
+  const periodStartISO = isoTimeAgo(periodHours);
+
+  const recentItems = db.prepare(
+    "SELECT COUNT(DISTINCT item_id) as cnt FROM price_snapshots WHERE snapshot_time >= ? AND avg_price_nq > 0"
+  ).get(midpointISO) as { cnt: number };
+
+  const olderItems = db.prepare(
+    "SELECT COUNT(DISTINCT item_id) as cnt FROM price_snapshots WHERE snapshot_time < ? AND snapshot_time >= ? AND avg_price_nq > 0"
+  ).get(midpointISO, periodStartISO) as { cnt: number };
+
+  const newest = db.prepare(
+    "SELECT MAX(snapshot_time) as val FROM price_snapshots"
+  ).get() as { val: string | null };
+
+  return {
+    recentItems: recentItems.cnt,
+    olderItems: olderItems.cnt,
+    periodStart: periodStartISO,
+    midpoint: midpointISO,
+    newestSnapshot: newest.val,
+  };
+}
+
 export function getTrending(
   db: Database.Database,
   opts: { direction: "up" | "down"; period: string; category?: number; limit: number }

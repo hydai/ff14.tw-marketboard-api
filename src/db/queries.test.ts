@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
-import { getTrending } from "./queries.js";
+import { getTrending, getTrendingDiagnostics } from "./queries.js";
 
 function createTestDb(): Database.Database {
   const db = new Database(":memory:");
@@ -187,5 +187,53 @@ describe("getTrending", () => {
 
     expect(result.length).toBe(1);
     expect((result[0] as { item_id: number }).item_id).toBe(5);
+  });
+});
+
+describe("getTrendingDiagnostics", () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  it("reports olderItems=0 when all data is in the recent window", () => {
+    const now = Date.now();
+    const insertSnapshot = db.prepare(
+      "INSERT INTO price_snapshots (item_id, snapshot_time, avg_price_nq, listing_count) VALUES (?, ?, ?, 10)"
+    );
+
+    // Only insert data in the recent window (0-6 hours ago for 1d period, midpoint=12h)
+    for (let h = 0; h <= 6; h += 2) {
+      insertSnapshot.run(1, new Date(now - h * 3600000).toISOString(), 1000);
+    }
+
+    const result = getTrendingDiagnostics(db, { period: "1d" });
+
+    expect(result.recentItems).toBeGreaterThan(0);
+    expect(result.olderItems).toBe(0);
+    expect(result.newestSnapshot).not.toBeNull();
+  });
+
+  it("reports both windows populated when data spans the full period", () => {
+    const now = Date.now();
+    const insertSnapshot = db.prepare(
+      "INSERT INTO price_snapshots (item_id, snapshot_time, avg_price_nq, listing_count) VALUES (?, ?, ?, 10)"
+    );
+
+    // Recent window: 0-11 hours ago
+    for (let h = 0; h <= 11; h += 3) {
+      insertSnapshot.run(1, new Date(now - h * 3600000).toISOString(), 1500);
+    }
+    // Older window: 13-23 hours ago
+    for (let h = 13; h <= 23; h += 3) {
+      insertSnapshot.run(1, new Date(now - h * 3600000).toISOString(), 1000);
+    }
+
+    const result = getTrendingDiagnostics(db, { period: "1d" });
+
+    expect(result.recentItems).toBeGreaterThan(0);
+    expect(result.olderItems).toBeGreaterThan(0);
+    expect(result.newestSnapshot).not.toBeNull();
   });
 });
