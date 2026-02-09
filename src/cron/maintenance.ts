@@ -1,5 +1,6 @@
 import { createLogger } from "../utils/logger";
 import { setMeta } from "../db/queries";
+import { withD1Retry } from "../utils/retry";
 import {
   RETENTION_RAW_SNAPSHOTS,
   RETENTION_HOURLY_AGGREGATES,
@@ -54,31 +55,54 @@ export async function runMaintenance(db: D1Database): Promise<void> {
   });
 
   // Step 5: Daily aggregation — roll up hourly into daily_aggregates
-  // Only completed days (before today); older days are already finalized
-  const rollupDaily = await db
-    .prepare(
-      `INSERT OR REPLACE INTO daily_aggregates
-         (item_id, day_timestamp, min_price_nq, avg_price_nq, max_price_nq,
-          min_price_hq, avg_price_hq, max_price_hq,
-          total_listings, total_sales, total_sales_gil)
-       SELECT
-         item_id,
-         date(hour_timestamp) AS day_timestamp,
-         MIN(min_price_nq),
-         AVG(avg_price_nq),
-         MAX(max_price_nq),
-         MIN(min_price_hq),
-         AVG(avg_price_hq),
-         MAX(max_price_hq),
-         SUM(total_listings),
-         SUM(total_sales),
-         SUM(total_sales_gil)
-       FROM hourly_aggregates
-       WHERE date(hour_timestamp) < date('now')
-         AND date(hour_timestamp) >= date('now', '-2 days')
-       GROUP BY item_id, date(hour_timestamp)`
-    )
-    .run();
+  // Only yesterday (the most recent completed day); older days are already finalized
+  // ON CONFLICT skips the update when all values are unchanged, avoiding wasteful writes
+  const rollupDaily = await withD1Retry(() =>
+    db
+      .prepare(
+        `INSERT INTO daily_aggregates
+           (item_id, day_timestamp, min_price_nq, avg_price_nq, max_price_nq,
+            min_price_hq, avg_price_hq, max_price_hq,
+            total_listings, total_sales, total_sales_gil)
+         SELECT
+           item_id,
+           date(hour_timestamp) AS day_timestamp,
+           MIN(min_price_nq),
+           AVG(avg_price_nq),
+           MAX(max_price_nq),
+           MIN(min_price_hq),
+           AVG(avg_price_hq),
+           MAX(max_price_hq),
+           SUM(total_listings),
+           SUM(total_sales),
+           SUM(total_sales_gil)
+         FROM hourly_aggregates
+         WHERE date(hour_timestamp) < date('now')
+           AND date(hour_timestamp) >= date('now', '-1 day')
+         GROUP BY item_id, date(hour_timestamp)
+         ON CONFLICT(item_id, day_timestamp) DO UPDATE SET
+           min_price_nq = excluded.min_price_nq,
+           avg_price_nq = excluded.avg_price_nq,
+           max_price_nq = excluded.max_price_nq,
+           min_price_hq = excluded.min_price_hq,
+           avg_price_hq = excluded.avg_price_hq,
+           max_price_hq = excluded.max_price_hq,
+           total_listings = excluded.total_listings,
+           total_sales = excluded.total_sales,
+           total_sales_gil = excluded.total_sales_gil
+         WHERE
+           daily_aggregates.min_price_nq IS NOT excluded.min_price_nq
+           OR daily_aggregates.avg_price_nq IS NOT excluded.avg_price_nq
+           OR daily_aggregates.max_price_nq IS NOT excluded.max_price_nq
+           OR daily_aggregates.min_price_hq IS NOT excluded.min_price_hq
+           OR daily_aggregates.avg_price_hq IS NOT excluded.avg_price_hq
+           OR daily_aggregates.max_price_hq IS NOT excluded.max_price_hq
+           OR daily_aggregates.total_listings IS NOT excluded.total_listings
+           OR daily_aggregates.total_sales IS NOT excluded.total_sales
+           OR daily_aggregates.total_sales_gil IS NOT excluded.total_sales_gil`
+      )
+      .run()
+  );
 
   log.info("Daily aggregation complete", {
     rowsWritten: rollupDaily.meta.rows_written,
