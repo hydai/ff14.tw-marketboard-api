@@ -1,17 +1,18 @@
 import { Context } from "hono";
-import type { Env } from "../../env";
+import type Database from "better-sqlite3";
 import {
   DEALS_MAX_PERCENTILE,
   DEFAULT_PAGE_SIZE,
-  KV_TTL_ANALYTICS,
   MAX_PAGE_SIZE,
-} from "../../config/constants";
-import { KVCache } from "../../cache/kv";
-import { getDeals } from "../../db/queries";
-import { resolveWorld } from "../../config/datacenters";
-import { HTTPError } from "../middleware";
+} from "../../config/constants.js";
+import { getDeals } from "../../db/queries.js";
+import { resolveWorld } from "../../config/datacenters.js";
+import { HTTPError } from "../middleware.js";
 
-export async function listDeals(c: Context<{ Bindings: Env }>) {
+type AppEnv = { Variables: { db: Database.Database } };
+
+export function listDeals(c: Context<AppEnv>) {
+  const db = c.get("db");
   const maxPercentile = Number(c.req.query("maxPercentile")) || DEALS_MAX_PERCENTILE;
   const category = c.req.query("category") ? Number(c.req.query("category")) : undefined;
   const worldParam = c.req.query("world");
@@ -24,26 +25,12 @@ export async function listDeals(c: Context<{ Bindings: Env }>) {
     worldId = world.id;
   }
 
-  // KV cache first (only for default params with no filters)
-  const kv = new KVCache(c.env.KV);
-  if (!category && !worldId && maxPercentile === DEALS_MAX_PERCENTILE) {
-    const cached = await kv.getJSON(KVCache.dealsKey());
-    if (cached) {
-      return c.json({ data: cached });
-    }
-  }
-
-  const result = await getDeals(c.env.DB, {
+  const data = getDeals(db, {
     maxPercentile,
     category,
     worldId,
     limit,
   });
 
-  // Cache default results
-  if (!category && !worldId && maxPercentile === DEALS_MAX_PERCENTILE) {
-    await kv.putJSON(KVCache.dealsKey(), result.results, KV_TTL_ANALYTICS);
-  }
-
-  return c.json({ data: result.results });
+  return c.json({ data });
 }

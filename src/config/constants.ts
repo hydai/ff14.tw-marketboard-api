@@ -23,13 +23,7 @@ export const TIER_CONFIGS: TierConfig[] = [
 ];
 
 // Batch sizes
-export const QUEUE_BATCH_SIZE = 100; // items per queue message
-
-// KV TTLs (seconds)
-export const KV_TTL_LATEST_PRICE = 3600;      // 1 hour
-export const KV_TTL_LISTINGS = 3600;           // 1 hour
-export const KV_TTL_ANALYTICS = 3600;          // 1 hour
-export const KV_TTL_MARKETABLE_ITEMS = 86400;  // 24 hours
+export const QUEUE_BATCH_SIZE = 100; // items per processing batch
 
 // Data retention (days)
 export const RETENTION_RAW_SNAPSHOTS = 14;

@@ -1,31 +1,31 @@
-import type { Env, SyncItemsMessage } from "../../env";
-import { XIVAPIClient } from "../../services/xivapi";
-import { batchInsert } from "../../db/batch";
-import { createLogger } from "../../utils/logger";
+import type Database from "better-sqlite3";
+import { XIVAPIClient } from "../services/xivapi.js";
+import { batchInsert } from "../db/batch.js";
+import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("sync-items");
 
 export async function processSyncItems(
-  msg: SyncItemsMessage,
-  env: Env
+  db: Database.Database,
+  itemIds: number[],
+  isNew: boolean,
 ): Promise<void> {
   const xivapi = new XIVAPIClient();
   const now = new Date().toISOString();
 
   log.info("Processing sync-items", {
-    itemCount: msg.itemIds.length,
-    isNew: msg.isNew,
+    itemCount: itemIds.length,
+    isNew,
   });
 
-  // Fetch EN item data and JA names in 2 batch requests (instead of 2N individual ones)
-  const items = await xivapi.fetchItemsBatchV2(msg.itemIds);
-  const jaNames = await xivapi.fetchItemNamesBatchV2(msg.itemIds, "ja");
+  const items = await xivapi.fetchItemsBatchV2(itemIds);
+  const jaNames = await xivapi.fetchItemNamesBatchV2(itemIds, "ja");
 
   const rows = items.map((item) => [
     item.row_id,
     item.fields.Name || "",
     jaNames.get(item.row_id) || "",
-    item.fields.Name || "", // No Chinese in XIVAPI v2; fall back to English
+    item.fields.Name || "",
     item.fields.Icon?.path || "",
     item.fields.ItemSearchCategory?.row_id ?? null,
     item.fields.ItemSearchCategory?.fields?.Name ?? null,
@@ -35,19 +35,17 @@ export async function processSyncItems(
   ]);
 
   if (rows.length > 0) {
-    await batchInsert(
-      env.DB,
+    batchInsert(
+      db,
       "items",
       ["item_id", "name_en", "name_ja", "name_zh", "icon_path", "category_id", "category_name", "is_hq_available", "stack_size", "updated_at"],
       rows,
       "ON CONFLICT(item_id) DO UPDATE SET name_en=excluded.name_en, name_ja=excluded.name_ja, name_zh=excluded.name_zh, icon_path=excluded.icon_path, category_id=excluded.category_id, category_name=excluded.category_name, is_hq_available=excluded.is_hq_available, stack_size=excluded.stack_size, updated_at=excluded.updated_at"
     );
 
-    // Assign default tier 3 so the dispatcher can pick up these items immediately.
-    // ON CONFLICT DO NOTHING preserves refined tiers (1/2) from the hourly tier update.
     const tierRows = items.map((item) => [item.row_id, 3, now]);
-    await batchInsert(
-      env.DB,
+    batchInsert(
+      db,
       "item_tiers",
       ["item_id", "tier", "updated_at"],
       tierRows,
@@ -60,6 +58,6 @@ export async function processSyncItems(
   log.info("Sync-items complete", {
     fetched: items.length,
     inserted: rows.length,
-    isNew: msg.isNew,
+    isNew,
   });
 }

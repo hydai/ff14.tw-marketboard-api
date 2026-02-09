@@ -1,116 +1,64 @@
-import { createLogger } from "../utils/logger";
-import { withD1Retry } from "../utils/retry";
+import type Database from "better-sqlite3";
+import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("db-batch");
 
-// D1 has a limit of 100 bound parameters per statement.
-// For batch inserts, we chunk rows to stay under this limit.
-const D1_MAX_PARAMS = 100;
-
-/**
- * Same chunking logic as batchInsert, but returns D1PreparedStatement[]
- * instead of executing them. Callers collect statements from multiple
- * tables and run them in a single db.batch() call — one subrequest.
- */
-export function prepareBatchStatements(
-  db: D1Database,
+export function batchInsert(
+  db: Database.Database,
   table: string,
   columns: string[],
   rows: unknown[][],
   onConflict?: string
-): D1PreparedStatement[] {
-  if (rows.length === 0) return [];
-
-  const paramsPerRow = columns.length;
-  const maxRowsPerBatch = Math.floor(D1_MAX_PARAMS / paramsPerRow);
-  const stmts: D1PreparedStatement[] = [];
-
-  for (let i = 0; i < rows.length; i += maxRowsPerBatch) {
-    const batch = rows.slice(i, i + maxRowsPerBatch);
-    const placeholders = batch
-      .map((_, idx) => {
-        const offset = idx * paramsPerRow;
-        const params = columns.map((_, j) => `?${offset + j + 1}`).join(", ");
-        return `(${params})`;
-      })
-      .join(", ");
-
-    const conflict = onConflict ? ` ${onConflict}` : "";
-    const sql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders}${conflict}`;
-    stmts.push(db.prepare(sql).bind(...batch.flat()));
-  }
-
-  return stmts;
-}
-
-export async function batchInsert(
-  db: D1Database,
-  table: string,
-  columns: string[],
-  rows: unknown[][],
-  onConflict?: string
-): Promise<void> {
+): void {
   if (rows.length === 0) return;
 
-  const paramsPerRow = columns.length;
-  const maxRowsPerBatch = Math.floor(D1_MAX_PARAMS / paramsPerRow);
+  const placeholders = columns.map(() => "?").join(", ");
+  const conflict = onConflict ? ` ${onConflict}` : "";
+  const sql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${placeholders})${conflict}`;
 
-  for (let i = 0; i < rows.length; i += maxRowsPerBatch) {
-    const batch = rows.slice(i, i + maxRowsPerBatch);
-    const placeholders = batch
-      .map((_, idx) => {
-        const offset = idx * paramsPerRow;
-        const params = columns.map((_, j) => `?${offset + j + 1}`).join(", ");
-        return `(${params})`;
-      })
-      .join(", ");
+  const stmt = db.prepare(sql);
 
-    const conflict = onConflict ? ` ${onConflict}` : "";
-    const sql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders}${conflict}`;
-    const bindings = batch.flat();
-
-    try {
-      await withD1Retry(() =>
-        db
-          .prepare(sql)
-          .bind(...bindings)
-          .run()
-      );
-    } catch (err) {
-      log.error("Batch insert failed", {
-        table,
-        batchSize: batch.length,
-        error: String(err),
-      });
-      throw err;
+  const insertAll = db.transaction((rows: unknown[][]) => {
+    for (const row of rows) {
+      stmt.run(...row);
     }
+  });
+
+  try {
+    insertAll(rows);
+  } catch (err) {
+    log.error("Batch insert failed", {
+      table,
+      rowCount: rows.length,
+      error: String(err),
+    });
+    throw err;
   }
 }
 
-export async function batchDelete(
-  db: D1Database,
+export function batchDelete(
+  db: Database.Database,
   table: string,
   whereColumn: string,
   values: (string | number)[]
-): Promise<void> {
+): void {
   if (values.length === 0) return;
 
-  // D1 max params = 100
-  for (let i = 0; i < values.length; i += D1_MAX_PARAMS) {
-    const batch = values.slice(i, i + D1_MAX_PARAMS);
-    const placeholders = batch.map(() => "?").join(", ");
-    const sql = `DELETE FROM ${table} WHERE ${whereColumn} IN (${placeholders})`;
-
-    try {
-      await withD1Retry(() =>
-        db
-          .prepare(sql)
-          .bind(...batch)
-          .run()
-      );
-    } catch (err) {
-      log.error("Batch delete failed", { table, error: String(err) });
-      throw err;
+  const deleteAll = db.transaction((vals: (string | number)[]) => {
+    // Use chunks to keep placeholder count reasonable
+    const chunkSize = 500;
+    for (let i = 0; i < vals.length; i += chunkSize) {
+      const batch = vals.slice(i, i + chunkSize);
+      const placeholders = batch.map(() => "?").join(", ");
+      const sql = `DELETE FROM ${table} WHERE ${whereColumn} IN (${placeholders})`;
+      db.prepare(sql).run(...batch);
     }
+  });
+
+  try {
+    deleteAll(values);
+  } catch (err) {
+    log.error("Batch delete failed", { table, error: String(err) });
+    throw err;
   }
 }

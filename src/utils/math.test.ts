@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { median, percentile, average, profitAfterTax, chunk } from "./math";
+import { median, percentile, average, profitAfterTax, chunk } from "./math.js";
 
 describe("median", () => {
   it("returns 0 for empty array", () => {

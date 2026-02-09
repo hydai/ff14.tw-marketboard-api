@@ -4,9 +4,11 @@ node_modules/
 # Build output
 dist/
 
-# Wrangler
-.wrangler/
-.dev.vars
+# SQLite data
+data/
+*.db
+*.db-wal
+*.db-shm
 
 # OS
 .DS_Store

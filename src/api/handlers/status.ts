@@ -1,24 +1,25 @@
 import { Context } from "hono";
-import type { Env } from "../../env";
-import { DC_LUHANGNIAO } from "../../config/datacenters";
-import { getMeta, getTaxRates } from "../../db/queries";
+import type Database from "better-sqlite3";
+import { DC_LUHANGNIAO } from "../../config/datacenters.js";
+import { getMeta, getTaxRates } from "../../db/queries.js";
 
-export async function healthCheck(c: Context<{ Bindings: Env }>) {
-  const [lastPoll, taxRatesResult] = await Promise.all([
-    getMeta(c.env.DB, "last_poll_time"),
-    getTaxRates(c.env.DB),
-  ]);
+type AppEnv = { Variables: { db: Database.Database } };
+
+export function healthCheck(c: Context<AppEnv>) {
+  const db = c.get("db");
+  const lastPoll = getMeta(db, "last_poll_time");
+  const taxRates = getTaxRates(db);
 
   return c.json({
     status: "ok",
     datacenter: DC_LUHANGNIAO.name,
     worlds: DC_LUHANGNIAO.worlds.length,
     lastPollTime: lastPoll?.value ?? null,
-    taxRateCount: taxRatesResult.results.length,
+    taxRateCount: taxRates.length,
   });
 }
 
-export async function listWorlds(c: Context<{ Bindings: Env }>) {
+export function listWorlds(c: Context<AppEnv>) {
   return c.json({
     data: DC_LUHANGNIAO.worlds.map((w) => ({
       id: w.id,
@@ -29,7 +30,8 @@ export async function listWorlds(c: Context<{ Bindings: Env }>) {
   });
 }
 
-export async function listTaxRates(c: Context<{ Bindings: Env }>) {
-  const result = await getTaxRates(c.env.DB);
-  return c.json({ data: result.results });
+export function listTaxRates(c: Context<AppEnv>) {
+  const db = c.get("db");
+  const data = getTaxRates(db);
+  return c.json({ data });
 }

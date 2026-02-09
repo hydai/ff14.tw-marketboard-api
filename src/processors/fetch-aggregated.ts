@@ -1,50 +1,42 @@
-import type { Env, FetchAggregatedMessage } from "../../env";
-import { KV_TTL_LATEST_PRICE } from "../../config/constants";
-import { UniversalisClient } from "../../services/universalis";
-import { KVCache } from "../../cache/kv";
-import { batchInsert } from "../../db/batch";
-import { createLogger } from "../../utils/logger";
-import { isTransientD1Error } from "../../utils/retry";
-import type { PriceSummary, UniversalisAggregatedItem } from "../../utils/types";
-import { WORLDS_BY_ID } from "../../config/datacenters";
+import type Database from "better-sqlite3";
+import { UniversalisClient } from "../services/universalis.js";
+import { batchInsert } from "../db/batch.js";
+import { createLogger } from "../utils/logger.js";
+import type { UniversalisAggregatedItem } from "../utils/types.js";
+import { WORLDS_BY_ID } from "../config/datacenters.js";
 
 const log = createLogger("fetch-aggregated");
 
 export async function processFetchAggregated(
-  msg: FetchAggregatedMessage,
-  env: Env
+  db: Database.Database,
+  itemIds: number[],
 ): Promise<void> {
   const client = new UniversalisClient();
-  const cache = new KVCache(env.KV);
   const now = new Date().toISOString();
 
-  log.info("Processing fetch-aggregated", { itemCount: msg.itemIds.length });
+  log.info("Processing fetch-aggregated", { itemCount: itemIds.length });
 
-  const response = await client.fetchAggregated(msg.itemIds);
+  const response = await client.fetchAggregated(itemIds);
 
   for (const result of response.results) {
     try {
-      await processAggregatedItem(env, cache, result, now);
+      processAggregatedItem(db, result, now);
     } catch (err) {
       log.error("Failed to process aggregated item", {
         itemId: result.itemId,
         error: String(err),
       });
-      if (isTransientD1Error(err)) {
-        throw err;
-      }
     }
   }
 
-  log.info("Fetch-aggregated complete", { itemCount: msg.itemIds.length });
+  log.info("Fetch-aggregated complete", { itemCount: itemIds.length });
 }
 
-async function processAggregatedItem(
-  env: Env,
-  cache: KVCache,
+function processAggregatedItem(
+  db: Database.Database,
   result: UniversalisAggregatedItem,
-  snapshotTime: string
-): Promise<void> {
+  snapshotTime: string,
+): void {
   const itemId = result.itemId;
 
   const minNQ = result.nq.minListing?.dc?.price ?? null;
@@ -68,8 +60,8 @@ async function processAggregatedItem(
     ? (WORLDS_BY_ID.get(cheapestWorldId)?.name ?? null)
     : null;
 
-  await batchInsert(
-    env.DB,
+  batchInsert(
+    db,
     "price_snapshots",
     [
       "item_id", "snapshot_time",
@@ -86,28 +78,12 @@ async function processAggregatedItem(
       minHQ,
       avgNQ,
       avgHQ,
-      0, // aggregated endpoint doesn't provide listing count
-      0, // aggregated endpoint doesn't provide units_for_sale
+      0,
+      0,
       velocityNQ,
       velocityHQ,
       cheapestWorldId,
       cheapestWorldName,
     ]]
   );
-
-  // Update KV cache with latest price summary
-  const priceSummary: PriceSummary = {
-    itemId,
-    minPriceNQ: minNQ,
-    minPriceHQ: minHQ,
-    avgPriceNQ: avgNQ,
-    avgPriceHQ: avgHQ,
-    listingCount: 0,
-    saleVelocityNQ: velocityNQ,
-    saleVelocityHQ: velocityHQ,
-    cheapestWorld: cheapestWorldName,
-    lastUpdated: snapshotTime,
-  };
-
-  await cache.putJSON(KVCache.latestPriceKey(itemId), priceSummary, KV_TTL_LATEST_PRICE);
 }

@@ -1,6 +1,6 @@
-import { XIVAPI_BASE_URL, XIVAPI_BATCH_ROWS } from "../config/constants";
-import { createLogger } from "../utils/logger";
-import type { XIVAPIItem } from "../utils/types";
+import { XIVAPI_BASE_URL, XIVAPI_BATCH_ROWS } from "../config/constants.js";
+import { createLogger } from "../utils/logger.js";
+import type { XIVAPIItem } from "../utils/types.js";
 
 const log = createLogger("xivapi");
 

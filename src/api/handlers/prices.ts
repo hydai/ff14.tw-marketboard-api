@@ -1,14 +1,15 @@
 import { Context } from "hono";
-import type { Env } from "../../env";
-import { KVCache } from "../../cache/kv";
+import type Database from "better-sqlite3";
 import {
   getListingsByItem,
   getListingsByItemAndWorld,
   getPriceHistory,
   getRecentSales,
-} from "../../db/queries";
-import { resolveWorld } from "../../config/datacenters";
-import { HTTPError } from "../middleware";
+} from "../../db/queries.js";
+import { resolveWorld } from "../../config/datacenters.js";
+import { HTTPError } from "../middleware.js";
+
+type AppEnv = { Variables: { db: Database.Database } };
 
 const PERIOD_HOURS: Record<string, number> = {
   "1d": 24,
@@ -19,38 +20,20 @@ const PERIOD_HOURS: Record<string, number> = {
   "90d": 2160,
 };
 
-export async function getListings(c: Context<{ Bindings: Env }>) {
+export function getListings(c: Context<AppEnv>) {
+  const db = c.get("db");
   const itemId = Number(c.req.param("itemId"));
   if (isNaN(itemId)) throw new HTTPError(400, "Invalid item ID");
 
   const hqParam = c.req.query("hq");
   const hq = hqParam === "true" ? true : hqParam === "false" ? false : undefined;
 
-  // KV cache first (stored in camelCase, normalize to snake_case for frontend)
-  const kv = new KVCache(c.env.KV);
-  const cached = await kv.getJSON(KVCache.listingsKey(itemId));
-  if (cached && hq === undefined) {
-    const normalized = (cached as any[]).map((l: any) => ({
-      world_name: l.worldName ?? l.world_name,
-      price_per_unit: l.pricePerUnit ?? l.price_per_unit,
-      quantity: l.quantity,
-      total: l.total,
-      tax: l.tax,
-      hq: typeof l.hq === "boolean" ? (l.hq ? 1 : 0) : l.hq,
-      retainer_name: l.retainerName ?? l.retainer_name,
-      retainer_city: l.retainerCity ?? l.retainer_city,
-      listing_id: l.listingId ?? l.listing_id,
-      last_review_time: l.lastReviewTime ?? l.last_review_time,
-    }));
-    return c.json({ data: normalized });
-  }
-
-  // Fallback to D1
-  const result = await getListingsByItem(c.env.DB, itemId, hq);
-  return c.json({ data: result.results });
+  const data = getListingsByItem(db, itemId, hq);
+  return c.json({ data });
 }
 
-export async function getWorldListings(c: Context<{ Bindings: Env }>) {
+export function getWorldListings(c: Context<AppEnv>) {
+  const db = c.get("db");
   const itemId = Number(c.req.param("itemId"));
   if (isNaN(itemId)) throw new HTTPError(400, "Invalid item ID");
 
@@ -61,11 +44,12 @@ export async function getWorldListings(c: Context<{ Bindings: Env }>) {
   const hqParam = c.req.query("hq");
   const hq = hqParam === "true" ? true : hqParam === "false" ? false : undefined;
 
-  const result = await getListingsByItemAndWorld(c.env.DB, itemId, world.id, hq);
-  return c.json({ data: result.results, world: world.name });
+  const data = getListingsByItemAndWorld(db, itemId, world.id, hq);
+  return c.json({ data, world: world.name });
 }
 
-export async function priceHistory(c: Context<{ Bindings: Env }>) {
+export function priceHistory(c: Context<AppEnv>) {
+  const db = c.get("db");
   const itemId = Number(c.req.param("itemId"));
   if (isNaN(itemId)) throw new HTTPError(400, "Invalid item ID");
 
@@ -82,11 +66,12 @@ export async function priceHistory(c: Context<{ Bindings: Env }>) {
   const hours = PERIOD_HOURS[period]!;
   const since = new Date(Date.now() - hours * 3600000).toISOString();
 
-  const result = await getPriceHistory(c.env.DB, itemId, { since, resolution });
-  return c.json({ data: result.results, period, resolution });
+  const data = getPriceHistory(db, itemId, { since, resolution });
+  return c.json({ data, period, resolution });
 }
 
-export async function recentSales(c: Context<{ Bindings: Env }>) {
+export function recentSales(c: Context<AppEnv>) {
+  const db = c.get("db");
   const itemId = Number(c.req.param("itemId"));
   if (isNaN(itemId)) throw new HTTPError(400, "Invalid item ID");
 
@@ -100,6 +85,6 @@ export async function recentSales(c: Context<{ Bindings: Env }>) {
     worldId = world.id;
   }
 
-  const result = await getRecentSales(c.env.DB, itemId, { days, worldId });
-  return c.json({ data: result.results });
+  const data = getRecentSales(db, itemId, { days, worldId });
+  return c.json({ data });
 }

@@ -1,14 +1,13 @@
-import type { Env } from "../env";
-import { withD1Retry } from "../utils/retry";
+import type Database from "better-sqlite3";
 
 // ── Items ──────────────────────────────────────────
 
-export function getItemById(db: D1Database, itemId: number) {
-  return db.prepare("SELECT * FROM items WHERE item_id = ?").bind(itemId).first();
+export function getItemById(db: Database.Database, itemId: number) {
+  return db.prepare("SELECT * FROM items WHERE item_id = ?").get(itemId);
 }
 
 export function searchItems(
-  db: D1Database,
+  db: Database.Database,
   opts: { search?: string; category?: number; page: number; limit: number }
 ) {
   const conditions: string[] = [];
@@ -30,15 +29,18 @@ export function searchItems(
   const countSql = `SELECT COUNT(*) as total FROM items ${where}`;
   const dataSql = `SELECT * FROM items ${where} ORDER BY item_id LIMIT ? OFFSET ?`;
 
+  const countRow = db.prepare(countSql).get(...params) as { total: number } | undefined;
+  const data = db.prepare(dataSql).all(...params, opts.limit, offset);
+
   return {
-    count: db.prepare(countSql).bind(...params),
-    data: db.prepare(dataSql).bind(...params, opts.limit, offset),
+    total: countRow?.total ?? 0,
+    data,
   };
 }
 
 // ── Listings ───────────────────────────────────────
 
-export function getListingsByItem(db: D1Database, itemId: number, hq?: boolean) {
+export function getListingsByItem(db: Database.Database, itemId: number, hq?: boolean) {
   let sql = "SELECT * FROM current_listings WHERE item_id = ?";
   const params: unknown[] = [itemId];
   if (hq !== undefined) {
@@ -46,11 +48,11 @@ export function getListingsByItem(db: D1Database, itemId: number, hq?: boolean) 
     params.push(hq ? 1 : 0);
   }
   sql += " ORDER BY price_per_unit ASC";
-  return db.prepare(sql).bind(...params).all();
+  return db.prepare(sql).all(...params);
 }
 
 export function getListingsByItemAndWorld(
-  db: D1Database,
+  db: Database.Database,
   itemId: number,
   worldId: number,
   hq?: boolean
@@ -62,28 +64,25 @@ export function getListingsByItemAndWorld(
     params.push(hq ? 1 : 0);
   }
   sql += " ORDER BY price_per_unit ASC";
-  return db.prepare(sql).bind(...params).all();
+  return db.prepare(sql).all(...params);
 }
 
-export function deleteListingsForItem(db: D1Database, itemId: number) {
-  return withD1Retry(() =>
-    db.prepare("DELETE FROM current_listings WHERE item_id = ?").bind(itemId).run()
-  );
+export function deleteListingsForItem(db: Database.Database, itemId: number) {
+  return db.prepare("DELETE FROM current_listings WHERE item_id = ?").run(itemId);
 }
 
 // ── Price Snapshots ────────────────────────────────
 
-export function getLatestSnapshot(db: D1Database, itemId: number) {
+export function getLatestSnapshot(db: Database.Database, itemId: number) {
   return db
     .prepare(
       "SELECT * FROM price_snapshots WHERE item_id = ? ORDER BY snapshot_time DESC LIMIT 1"
     )
-    .bind(itemId)
-    .first();
+    .get(itemId);
 }
 
 export function getPriceHistory(
-  db: D1Database,
+  db: Database.Database,
   itemId: number,
   opts: { since: string; resolution: "raw" | "hourly" | "daily" }
 ) {
@@ -102,13 +101,13 @@ export function getPriceHistory(
         : "snapshot_time";
 
   const sql = `SELECT * FROM ${table} WHERE item_id = ? AND ${timeCol} >= ? ORDER BY ${timeCol} ASC`;
-  return db.prepare(sql).bind(itemId, opts.since).all();
+  return db.prepare(sql).all(itemId, opts.since);
 }
 
 // ── Sales History ──────────────────────────────────
 
 export function getRecentSales(
-  db: D1Database,
+  db: Database.Database,
   itemId: number,
   opts: { days: number; worldId?: number }
 ) {
@@ -122,46 +121,41 @@ export function getRecentSales(
   }
 
   sql += " ORDER BY sold_at DESC LIMIT 200";
-  return db.prepare(sql).bind(...params).all();
+  return db.prepare(sql).all(...params);
 }
 
 // ── Tax Rates ──────────────────────────────────────
 
-export function getTaxRates(db: D1Database) {
+export function getTaxRates(db: Database.Database) {
   return db.prepare("SELECT * FROM tax_rates ORDER BY world_id").all();
 }
 
 // ── System Meta ────────────────────────────────────
 
-export function getMeta(db: D1Database, key: string) {
-  return db.prepare("SELECT value FROM system_meta WHERE key = ?").bind(key).first<{ value: string }>();
+export function getMeta(db: Database.Database, key: string) {
+  return db.prepare("SELECT value FROM system_meta WHERE key = ?").get(key) as { value: string } | undefined;
 }
 
-export function setMeta(db: D1Database, key: string, value: string) {
-  return withD1Retry(() =>
-    db
-      .prepare(
-        "INSERT INTO system_meta (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
-      )
-      .bind(key, value)
-      .run()
-  );
+export function setMeta(db: Database.Database, key: string, value: string) {
+  return db
+    .prepare(
+      "INSERT INTO system_meta (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+    )
+    .run(key, value);
 }
 
 // ── Item Tiers ─────────────────────────────────────
 
-export function getItemsByTier(db: D1Database, tier: number) {
-  return db.prepare("SELECT item_id FROM item_tiers WHERE tier = ?").bind(tier).all<{ item_id: number }>();
+export function getItemsByTier(db: Database.Database, tier: number) {
+  return db.prepare("SELECT item_id FROM item_tiers WHERE tier = ?").all(tier) as { item_id: number }[];
 }
 
 // ── Arbitrage ──────────────────────────────────────
 
 export function getArbitrageOpportunities(
-  db: D1Database,
+  db: Database.Database,
   opts: { minProfit: number; minProfitPct: number; category?: number; limit: number }
 ) {
-  // Find items where the cheapest NQ listing on one world is significantly cheaper than another.
-  // Derives per-world min prices directly from current_listings (no separate snapshot table needed).
   let sql = `
     WITH world_mins AS (
       SELECT item_id, world_id, world_name, MIN(price_per_unit) as min_price_nq
@@ -200,13 +194,13 @@ export function getArbitrageOpportunities(
   sql += " ORDER BY bs.profit_pct DESC LIMIT ?";
   params.push(opts.limit);
 
-  return db.prepare(sql).bind(...params).all();
+  return db.prepare(sql).all(...params);
 }
 
 // ── Deals ──────────────────────────────────────────
 
 export function getDeals(
-  db: D1Database,
+  db: Database.Database,
   opts: { maxPercentile: number; category?: number; worldId?: number; limit: number }
 ) {
   let sql = `
@@ -256,13 +250,13 @@ export function getDeals(
   sql += " ORDER BY discount DESC LIMIT ?";
   params.push(opts.limit);
 
-  return db.prepare(sql).bind(...params).all();
+  return db.prepare(sql).all(...params);
 }
 
 // ── Trending ───────────────────────────────────────
 
 export function getTrending(
-  db: D1Database,
+  db: Database.Database,
   opts: { direction: "up" | "down"; period: string; category?: number; limit: number }
 ) {
   const periodHours = opts.period === "1d" ? 24 : opts.period === "7d" ? 168 : 72;
@@ -307,5 +301,5 @@ export function getTrending(
   sql += " ORDER BY ABS(change_pct) DESC LIMIT ?";
   params.push(opts.limit);
 
-  return db.prepare(sql).bind(...params).all();
+  return db.prepare(sql).all(...params);
 }

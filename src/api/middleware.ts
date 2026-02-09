@@ -1,7 +1,9 @@
 import { Context, Next } from "hono";
 import { cors } from "hono/cors";
-import { createLogger } from "../utils/logger";
-import type { Env } from "../env";
+import type Database from "better-sqlite3";
+import { createLogger } from "../utils/logger.js";
+
+type AppEnv = { Variables: { db: Database.Database } };
 
 const log = createLogger("api");
 
@@ -10,7 +12,7 @@ export function corsMiddleware() {
     origin: (origin) => {
       try {
         const { hostname } = new URL(origin);
-        if (hostname === "ff14.tw" || hostname.endsWith(".ff14.tw")) {
+        if (hostname === "ff14.tw" || hostname.endsWith(".ff14.tw") || hostname === "localhost") {
           return origin;
         }
       } catch {
@@ -21,7 +23,7 @@ export function corsMiddleware() {
   });
 }
 
-export async function errorHandler(c: Context<{ Bindings: Env }>, next: Next) {
+export async function errorHandler(c: Context<AppEnv>, next: Next) {
   try {
     await next();
   } catch (err) {
@@ -39,7 +41,7 @@ export async function errorHandler(c: Context<{ Bindings: Env }>, next: Next) {
   }
 }
 
-export async function requestLogger(c: Context<{ Bindings: Env }>, next: Next) {
+export async function requestLogger(c: Context<AppEnv>, next: Next) {
   const start = Date.now();
   await next();
   const duration = Date.now() - start;

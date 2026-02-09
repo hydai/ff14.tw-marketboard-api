@@ -3,15 +3,15 @@ import {
   UNIVERSALIS_BASE_URL,
   UNIVERSALIS_ITEMS_PER_REQUEST,
   UNIVERSALIS_ITEMS_PER_REQUEST_AGGREGATED,
-} from "../config/constants";
-import { chunk } from "../utils/math";
-import { DC_LUHANGNIAO } from "../config/datacenters";
-import { createLogger } from "../utils/logger";
+} from "../config/constants.js";
+import { chunk } from "../utils/math.js";
+import { DC_LUHANGNIAO } from "../config/datacenters.js";
+import { createLogger } from "../utils/logger.js";
 import type {
   UniversalisMultiResponse,
   UniversalisAggregatedResponse,
   UniversalisTaxRates,
-} from "../utils/types";
+} from "../utils/types.js";
 
 const log = createLogger("universalis");
 
@@ -86,7 +86,7 @@ export class UniversalisClient {
   private async request(url: string): Promise<unknown> {
     const resp = await fetch(url, {
       headers: {
-        "User-Agent": "ff14-tw-marketboard/1.0 (Cloudflare Worker)",
+        "User-Agent": "ff14-tw-marketboard-cli/1.0",
         Accept: "application/json",
       },
     });

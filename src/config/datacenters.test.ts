@@ -5,7 +5,7 @@ import {
   WORLDS_BY_ID,
   WORLDS_BY_NAME,
   WORLDS_BY_EN_NAME,
-} from "./datacenters";
+} from "./datacenters.js";
 
 describe("DC_LUHANGNIAO", () => {
   it("has correct id", () => {

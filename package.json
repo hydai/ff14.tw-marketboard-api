@@ -1,26 +1,32 @@
 {
   "name": "ff14-tw-marketboard",
-  "version": "1.0.0",
-  "description": "FFXIV Market Board price tracking for Taiwan datacenter (陸行鳥)",
+  "version": "2.0.0",
+  "description": "FFXIV Market Board price tracking for Taiwan datacenter (陸行鳥) — local CLI + SQLite",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "init": "tsx src/cli.ts init",
+    "fetch": "tsx src/cli.ts fetch",
+    "sync": "tsx src/cli.ts sync-items",
+    "aggregate": "tsx src/cli.ts aggregate",
+    "maintain": "tsx src/cli.ts maintain",
+    "stats": "tsx src/cli.ts stats",
+    "serve": "tsx src/cli.ts serve",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "db:migrate": "wrangler d1 migrations apply marketboard-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply marketboard-db --remote",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "commander": "^13.1.0",
     "hono": "^4.11.8",
+    "@hono/node-server": "^1.14.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260206.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18",
-    "wrangler": "^4.63.0"
+    "vitest": "^4.0.18"
   }
 }
