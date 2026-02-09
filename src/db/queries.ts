@@ -125,20 +125,6 @@ export function getRecentSales(
   return db.prepare(sql).bind(...params).all();
 }
 
-// ── World Price Snapshots ──────────────────────────
-
-export function getLatestWorldSnapshots(db: D1Database, itemId: number) {
-  return db
-    .prepare(
-      `SELECT * FROM world_price_snapshots
-       WHERE item_id = ? AND snapshot_time = (
-         SELECT MAX(snapshot_time) FROM world_price_snapshots WHERE item_id = ?
-       )`
-    )
-    .bind(itemId, itemId)
-    .all();
-}
-
 // ── Tax Rates ──────────────────────────────────────
 
 export function getTaxRates(db: D1Database) {
@@ -174,16 +160,14 @@ export function getArbitrageOpportunities(
   db: D1Database,
   opts: { minProfit: number; minProfitPct: number; category?: number; limit: number }
 ) {
-  // Find items where the cheapest listing on one world is significantly cheaper than another
+  // Find items where the cheapest NQ listing on one world is significantly cheaper than another.
+  // Derives per-world min prices directly from current_listings (no separate snapshot table needed).
   let sql = `
-    WITH latest_world_prices AS (
-      SELECT ws.item_id, ws.world_id, ws.world_name, ws.min_price_nq, ws.min_price_hq,
-             ROW_NUMBER() OVER (PARTITION BY ws.item_id, ws.world_id ORDER BY ws.snapshot_time DESC) as rn
-      FROM world_price_snapshots ws
-      WHERE ws.snapshot_time >= datetime('now', '-15 minutes')
-    ),
-    filtered AS (
-      SELECT * FROM latest_world_prices WHERE rn = 1
+    WITH world_mins AS (
+      SELECT item_id, world_id, world_name, MIN(price_per_unit) as min_price_nq
+      FROM current_listings
+      WHERE hq = 0
+      GROUP BY item_id, world_id
     ),
     buy_sell AS (
       SELECT
@@ -194,8 +178,8 @@ export function getArbitrageOpportunities(
         s.min_price_nq as sell_price,
         (s.min_price_nq - b.min_price_nq) as profit,
         CAST((s.min_price_nq - b.min_price_nq) AS REAL) / b.min_price_nq * 100 as profit_pct
-      FROM filtered b
-      CROSS JOIN filtered s
+      FROM world_mins b
+      CROSS JOIN world_mins s
       WHERE b.item_id = s.item_id
         AND b.world_id != s.world_id
         AND b.min_price_nq > 0

@@ -50,4 +50,8 @@ export class KVCache {
   static marketableItemsKey(): string {
     return "items:marketable";
   }
+
+  static lastSaleTimestampKey(itemId: number): string {
+    return `item:${itemId}:lastSaleTs`;
+  }
 }

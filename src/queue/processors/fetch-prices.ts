@@ -135,89 +135,47 @@ async function processItem(
     ]]
   );
 
-  // 3. Insert world-level price snapshots
-  // Group listings by world to compute per-world aggregates
-  const worldListings = new Map<number, UniversalisListing[]>();
-  for (const listing of data.listings) {
-    const existing = worldListings.get(listing.worldID) ?? [];
-    existing.push(listing);
-    worldListings.set(listing.worldID, existing);
-  }
+  // 3. Insert only genuinely new sales (filter by last-seen timestamp in KV)
+  if (data.recentHistory.length > 0) {
+    const lastSaleTs = await cache.getJSON<number>(KVCache.lastSaleTimestampKey(itemId));
+    const cutoff = lastSaleTs ?? 0;
 
-  if (worldListings.size > 0) {
-    const worldRows: unknown[][] = [];
-    for (const [worldId, listings] of worldListings) {
-      const nqListings = listings.filter((l) => !l.hq);
-      const hqListings = listings.filter((l) => l.hq);
+    const newSales = data.recentHistory.filter((s: UniversalisSale) => s.timestamp > cutoff);
 
-      const minNQ = nqListings.length > 0
-        ? Math.min(...nqListings.map((l) => l.pricePerUnit))
-        : null;
-      const minHQ = hqListings.length > 0
-        ? Math.min(...hqListings.map((l) => l.pricePerUnit))
-        : null;
-
-      const avgNQ = nqListings.length > 0
-        ? Math.round(median(nqListings.map((l) => l.pricePerUnit)))
-        : null;
-      const avgHQ = hqListings.length > 0
-        ? Math.round(median(hqListings.map((l) => l.pricePerUnit)))
-        : null;
-
-      worldRows.push([
+    if (newSales.length > 0) {
+      const saleRows = newSales.map((s: UniversalisSale) => [
         itemId,
-        worldId,
-        listings[0]!.worldName,
-        snapshotTime,
-        minNQ,
-        minHQ,
-        avgNQ,
-        avgHQ,
-        listings.length,
+        s.worldID,
+        s.worldName,
+        s.pricePerUnit,
+        s.quantity,
+        s.total,
+        s.hq ? 1 : 0,
+        s.buyerName,
+        new Date(s.timestamp * 1000).toISOString(),
       ]);
+
+      await batchInsert(
+        env.DB,
+        "sales_history",
+        [
+          "item_id", "world_id", "world_name",
+          "price_per_unit", "quantity", "total",
+          "hq", "buyer_name", "sold_at",
+        ],
+        saleRows,
+        "ON CONFLICT DO NOTHING"
+      );
     }
 
-    await batchInsert(
-      env.DB,
-      "world_price_snapshots",
-      [
-        "item_id", "world_id", "world_name", "snapshot_time",
-        "min_price_nq", "min_price_hq",
-        "avg_price_nq", "avg_price_hq",
-        "listing_count",
-      ],
-      worldRows
-    );
+    // Update KV with the most recent sale timestamp
+    const maxTs = Math.max(...data.recentHistory.map((s: UniversalisSale) => s.timestamp));
+    if (maxTs > cutoff) {
+      await cache.putJSON(KVCache.lastSaleTimestampKey(itemId), maxTs, KV_TTL_LATEST_PRICE);
+    }
   }
 
-  // 4. Insert sales history (dedup via ON CONFLICT IGNORE)
-  if (data.recentHistory.length > 0) {
-    const saleRows = data.recentHistory.map((s: UniversalisSale) => [
-      itemId,
-      s.worldID,
-      s.worldName,
-      s.pricePerUnit,
-      s.quantity,
-      s.total,
-      s.hq ? 1 : 0,
-      s.buyerName,
-      new Date(s.timestamp * 1000).toISOString(),
-    ]);
-
-    await batchInsert(
-      env.DB,
-      "sales_history",
-      [
-        "item_id", "world_id", "world_name",
-        "price_per_unit", "quantity", "total",
-        "hq", "buyer_name", "sold_at",
-      ],
-      saleRows,
-      "ON CONFLICT DO NOTHING"
-    );
-  }
-
-  // 5. Update KV cache with latest price summary
+  // 4. Update KV cache with latest price summary
   const priceSummary: PriceSummary = {
     itemId,
     minPriceNQ: data.minPriceNQ || null,
@@ -233,7 +191,7 @@ async function processItem(
 
   await cache.putJSON(KVCache.latestPriceKey(itemId), priceSummary, KV_TTL_LATEST_PRICE);
 
-  // 6. Update KV cache with listings
+  // 5. Update KV cache with listings
   const listingsCache = data.listings.map((l: UniversalisListing) => ({
     listingId: l.listingID,
     worldName: l.worldName,

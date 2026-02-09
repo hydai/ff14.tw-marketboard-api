@@ -63,7 +63,6 @@ interface CollectionStats {
     items: number;
     currentListings: number;
     priceSnapshots: number;
-    worldPriceSnapshots: number;
     salesHistory: number;
     hourlyAggregates: number;
     dailyAggregates: number;
