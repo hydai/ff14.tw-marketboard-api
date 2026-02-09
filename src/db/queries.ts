@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { isoTimeAgo } from "../utils/datetime.js";
 
 // ── Items ──────────────────────────────────────────
 
@@ -260,20 +261,21 @@ export function getTrending(
   opts: { direction: "up" | "down"; period: string; category?: number; limit: number }
 ) {
   const periodHours = opts.period === "1d" ? 24 : opts.period === "7d" ? 168 : 72;
-  const midpoint = `datetime('now', '-${Math.floor(periodHours / 2)} hours')`;
+  const midpointISO = isoTimeAgo(Math.floor(periodHours / 2));
+  const periodStartISO = isoTimeAgo(periodHours);
 
   let sql = `
     WITH recent AS (
       SELECT item_id, AVG(avg_price_nq) as avg_price
       FROM price_snapshots
-      WHERE snapshot_time >= ${midpoint} AND avg_price_nq > 0
+      WHERE snapshot_time >= ? AND avg_price_nq > 0
       GROUP BY item_id
     ),
     older AS (
       SELECT item_id, AVG(avg_price_nq) as avg_price
       FROM price_snapshots
-      WHERE snapshot_time < ${midpoint}
-        AND snapshot_time >= datetime('now', '-${periodHours} hours')
+      WHERE snapshot_time < ?
+        AND snapshot_time >= ?
         AND avg_price_nq > 0
       GROUP BY item_id
     )
@@ -285,7 +287,7 @@ export function getTrending(
     JOIN items i ON i.item_id = r.item_id
     WHERE o.avg_price > 0`;
 
-  const params: unknown[] = [];
+  const params: unknown[] = [midpointISO, midpointISO, periodStartISO];
 
   if (opts.direction === "up") {
     sql += " AND r.avg_price > o.avg_price AND (r.avg_price - o.avg_price) / o.avg_price > 0.1";

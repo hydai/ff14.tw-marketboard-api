@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { createLogger } from "../utils/logger.js";
 import { setMeta } from "../db/queries.js";
+import { isoTimeAgo } from "../utils/datetime.js";
 import {
   RETENTION_RAW_SNAPSHOTS,
   RETENTION_HOURLY_AGGREGATES,
@@ -13,15 +14,18 @@ export function runMaintenance(db: Database.Database): void {
   log.info("Starting daily maintenance");
   const start = Date.now();
 
-  const snapshotCutoff = `datetime('now', '-${RETENTION_RAW_SNAPSHOTS} days')`;
+  // snapshot_time and sold_at use ISO 8601 format (from toISOString())
+  const snapshotCutoff = isoTimeAgo(RETENTION_RAW_SNAPSHOTS * 24);
+  const salesCutoff = isoTimeAgo(RETENTION_HOURLY_AGGREGATES * 24);
+  // hour_timestamp and day_timestamp use space-separated format (from strftime())
+  // so datetime() is correct for those comparisons
   const hourlyCutoff = `datetime('now', '-${RETENTION_HOURLY_AGGREGATES} days')`;
   const dailyCutoff = `datetime('now', '-${RETENTION_DAILY_AGGREGATES} days')`;
-  const salesCutoff = `datetime('now', '-${RETENTION_HOURLY_AGGREGATES} days')`;
 
   // Step 1: Delete old price_snapshots
   const deleteSnapshots = db
-    .prepare(`DELETE FROM price_snapshots WHERE snapshot_time < ${snapshotCutoff}`)
-    .run();
+    .prepare("DELETE FROM price_snapshots WHERE snapshot_time < ?")
+    .run(snapshotCutoff);
 
   log.info("Deleted old price_snapshots", {
     rowsDeleted: deleteSnapshots.changes,
@@ -47,8 +51,8 @@ export function runMaintenance(db: Database.Database): void {
 
   // Step 4: Delete old sales_history
   const deleteSales = db
-    .prepare(`DELETE FROM sales_history WHERE sold_at < ${salesCutoff}`)
-    .run();
+    .prepare("DELETE FROM sales_history WHERE sold_at < ?")
+    .run(salesCutoff);
 
   log.info("Deleted old sales_history", {
     rowsDeleted: deleteSales.changes,
@@ -105,6 +109,7 @@ export function runMaintenance(db: Database.Database): void {
   });
 
   // Step 6: Reclassify item tiers based on 7-day sales velocity
+  const salesWindow = isoTimeAgo(7 * 24);
   db.prepare(
     `INSERT OR REPLACE INTO item_tiers (item_id, tier, updated_at)
      SELECT
@@ -118,12 +123,13 @@ export function runMaintenance(db: Database.Database): void {
      FROM (
        SELECT item_id, COUNT(*) * 1.0 / 7 as daily_sales
        FROM sales_history
-       WHERE sold_at >= datetime('now', '-7 days')
+       WHERE sold_at >= ?
        GROUP BY item_id
      )`
-  ).run();
+  ).run(salesWindow);
 
   // Bootstrap tiers from Universalis velocity data for cold-start
+  const recentSnapshots = isoTimeAgo(24);
   db.prepare(
     `INSERT OR REPLACE INTO item_tiers (item_id, tier, updated_at)
      SELECT
@@ -139,12 +145,12 @@ export function runMaintenance(db: Database.Database): void {
          item_id,
          AVG(sale_velocity_nq + sale_velocity_hq) as total_velocity
        FROM price_snapshots
-       WHERE snapshot_time >= datetime('now', '-1 day')
+       WHERE snapshot_time >= ?
        GROUP BY item_id
        HAVING total_velocity >= 2
      )
      WHERE item_id IN (SELECT item_id FROM item_tiers WHERE tier = 3)`
-  ).run();
+  ).run(recentSnapshots);
 
   log.info("Reclassified item tiers");
 

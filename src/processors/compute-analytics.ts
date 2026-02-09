@@ -7,6 +7,7 @@ import {
 } from "../config/constants.js";
 import { getArbitrageOpportunities, getDeals, getTrending } from "../db/queries.js";
 import { createLogger } from "../utils/logger.js";
+import { isoTimeAgo } from "../utils/datetime.js";
 
 const log = createLogger("compute-analytics");
 
@@ -72,6 +73,7 @@ function computeTrending(db: Database.Database) {
 }
 
 function computeVelocity(db: Database.Database) {
+  const soldAtCutoff = isoTimeAgo(7 * 24);
   const result = db.prepare(`
     SELECT
       sh.item_id,
@@ -81,12 +83,12 @@ function computeVelocity(db: Database.Database) {
       SUM(sh.total) * 1.0 / 7 as total_gil_per_day
     FROM sales_history sh
     JOIN items i ON i.item_id = sh.item_id
-    WHERE sh.sold_at >= datetime('now', '-7 days')
+    WHERE sh.sold_at >= ?
     GROUP BY sh.item_id
     HAVING sales_per_day >= ?
     ORDER BY total_gil_per_day DESC
     LIMIT ?
-  `).all(VELOCITY_MIN_SALES_PER_DAY, ANALYTICS_RESULT_LIMIT);
+  `).all(soldAtCutoff, VELOCITY_MIN_SALES_PER_DAY, ANALYTICS_RESULT_LIMIT);
 
   log.info("Velocity computed", { count: result.length });
   return result;

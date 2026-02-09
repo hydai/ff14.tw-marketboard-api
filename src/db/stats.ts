@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { isoTimeAgo } from "../utils/datetime.js";
 
 interface TableCounts {
   items: number;
@@ -30,8 +31,8 @@ interface StatsResult {
 }
 
 export function getCollectionStats(db: Database.Database): StatsResult {
-  const cnt = (sql: string): number => {
-    const row = db.prepare(sql).get() as { cnt: number } | undefined;
+  const cnt = (sql: string, ...params: unknown[]): number => {
+    const row = db.prepare(sql).get(...params) as { cnt: number } | undefined;
     return row?.cnt ?? 0;
   };
 
@@ -39,6 +40,8 @@ export function getCollectionStats(db: Database.Database): StatsResult {
     const row = db.prepare(sql).get() as { val: string | null } | undefined;
     return row?.val ?? null;
   };
+
+  const recentCutoff = isoTimeAgo(0.25);
 
   return {
     tables: {
@@ -57,7 +60,8 @@ export function getCollectionStats(db: Database.Database): StatsResult {
     },
     freshness: {
       itemsWithRecentSnapshots: cnt(
-        "SELECT COUNT(DISTINCT item_id) as cnt FROM price_snapshots WHERE snapshot_time >= datetime('now', '-15 minutes')"
+        "SELECT COUNT(DISTINCT item_id) as cnt FROM price_snapshots WHERE snapshot_time >= ?",
+        recentCutoff
       ),
       oldestSnapshotAge: val("SELECT MIN(snapshot_time) as val FROM price_snapshots"),
       newestSnapshotAge: val("SELECT MAX(snapshot_time) as val FROM price_snapshots"),

@@ -1,12 +1,15 @@
 import type Database from "better-sqlite3";
 import { createLogger } from "../utils/logger.js";
 import { setMeta } from "../db/queries.js";
+import { isoTimeAgo } from "../utils/datetime.js";
 
 const log = createLogger("aggregation");
 
 export function runAggregation(db: Database.Database): void {
   log.info("Starting hourly aggregation");
   const start = Date.now();
+
+  const snapshotCutoff = isoTimeAgo(70 / 60);
 
   const rollupHourly = db
     .prepare(
@@ -27,7 +30,7 @@ export function runAggregation(db: Database.Database): void {
          0,
          0
        FROM price_snapshots
-       WHERE snapshot_time >= datetime('now', '-70 minutes')
+       WHERE snapshot_time >= ?
        GROUP BY item_id, strftime('%Y-%m-%d %H:00:00', snapshot_time)
        ON CONFLICT(item_id, hour_timestamp) DO UPDATE SET
          min_price_nq = excluded.min_price_nq,
@@ -50,7 +53,7 @@ export function runAggregation(db: Database.Database): void {
          OR hourly_aggregates.total_sales IS NOT excluded.total_sales
          OR hourly_aggregates.total_sales_gil IS NOT excluded.total_sales_gil`
     )
-    .run();
+    .run(snapshotCutoff);
 
   log.info("Hourly aggregation complete", {
     rowsWritten: rollupHourly.changes,
