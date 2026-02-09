@@ -68,6 +68,8 @@ program
   .description("Cron-friendly update: fetch only tiers whose polling interval has elapsed")
   .option("--db <path>", "SQLite file path", "./data/marketboard.db")
   .option("--concurrency <n>", "Max concurrent HTTP requests (max 8)", "8")
+  .option("--daemon", "Run continuously in a loop instead of exiting after one cycle")
+  .option("--interval <minutes>", "Minutes between cycles in daemon mode (min 1)", "5")
   .option("--verbose", "Debug logging")
   .action(updateCommand);
 

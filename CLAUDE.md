@@ -10,6 +10,7 @@ Local CLI tool that tracks FFXIV market board prices for the Taiwan datacenter (
 tsx src/cli.ts init             # Create/migrate the SQLite database
 tsx src/cli.ts fetch            # Fetch prices for all tiered items (full manual refresh)
 tsx src/cli.ts update           # Cron-friendly: fetch only tiers whose interval has elapsed
+tsx src/cli.ts update --daemon  # Run continuously (replaces cron); --interval <min> sets cycle time
 tsx src/cli.ts sync-items       # Sync item metadata from XIVAPI
 tsx src/cli.ts aggregate        # Run hourly aggregation rollup
 tsx src/cli.ts maintain         # Run daily maintenance (cleanup + tier reclassification)

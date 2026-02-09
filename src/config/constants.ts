@@ -37,6 +37,9 @@ export const RETENTION_DAILY_AGGREGATES = 365;
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 200;
 
+// Daemon mode
+export const DAEMON_DEFAULT_INTERVAL_MINUTES = 5;
+
 // Analytics
 export const ARBITRAGE_MIN_PROFIT_GIL = 1000;
 export const ARBITRAGE_MIN_PROFIT_PCT = 5;
