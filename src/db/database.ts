@@ -11,8 +11,9 @@ export function openDatabase(dbPath: string): Database.Database {
   const db = new Database(dbPath);
 
   db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  db.pragma("auto_vacuum = INCREMENTAL");
   db.pragma("busy_timeout = 5000");
-  db.pragma("foreign_keys = ON");
 
   log.info("Opened database", { path: dbPath });
   return db;
