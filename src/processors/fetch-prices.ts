@@ -83,7 +83,8 @@ function processItem(
         `INSERT INTO current_listings
          (listing_id, item_id, world_id, price_per_unit, quantity, total, tax,
           hq, retainer_name, retainer_city, last_review_time, fetched_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(item_id, world_id, listing_id) DO NOTHING`
       );
 
       for (const l of data.listings) {
