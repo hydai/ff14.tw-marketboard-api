@@ -8,6 +8,7 @@ import { maintainCommand } from "./commands/maintain.js";
 import { statsCommand } from "./commands/stats.js";
 import { serveCommand } from "./commands/serve.js";
 import { updateCommand } from "./commands/update.js";
+import { dumpCommand } from "./commands/dump.js";
 
 const program = new Command();
 
@@ -72,5 +73,21 @@ program
   .option("--interval <minutes>", "Minutes between cycles in daemon mode (min 1)", "5")
   .option("--verbose", "Debug logging")
   .action(updateCommand);
+
+program
+  .command("dump")
+  .description("Export database to static JSON files for GitHub Pages hosting")
+  .option("--db <path>", "SQLite file path", "./data/marketboard.db")
+  .option("--output <dir>", "Output directory", "./static-api")
+  .option("--tier <tier>", "Only export items in this tier (1, 2, or 3)")
+  .option("--history-period <period>", "Price history window", "7d")
+  .option("--sales-days <days>", "Sales history window in days", "7")
+  .option("--analytics-limit <n>", "Max rows per analytics file", "200")
+  .option("--items-only", "Skip analytics endpoints")
+  .option("--analytics-only", "Skip per-item data")
+  .option("--clean", "Remove output dir before export")
+  .option("--pretty", "Pretty-print JSON (larger files)")
+  .option("--verbose", "Debug logging")
+  .action(dumpCommand);
 
 program.parse();

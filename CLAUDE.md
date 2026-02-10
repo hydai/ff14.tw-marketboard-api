@@ -16,6 +16,8 @@ tsx src/cli.ts aggregate        # Run hourly aggregation rollup
 tsx src/cli.ts maintain         # Run daily maintenance (cleanup + tier reclassification)
 tsx src/cli.ts stats            # Print database statistics
 tsx src/cli.ts serve            # Start local HTTP API server (default port 3000)
+tsx src/cli.ts dump             # Export DB to static JSON files (for GitHub Pages)
+tsx src/cli.ts dump --tier 1 --clean --output ./static-api  # Typical usage
 
 npm test              # Run tests (vitest)
 npm run typecheck     # Type check (tsc --noEmit)
@@ -29,6 +31,7 @@ Local CLI (`tsx src/cli.ts <command>`) with direct SQLite access via `better-sql
 - **Commands** — `src/commands/*.ts` orchestrate processors and cron logic
 - **Processors** — `src/processors/*.ts` fetch data from APIs and write to SQLite
 - **API server** — Hono on `@hono/node-server`, started via `serve` command
+- **Static export** — `dump` command writes pre-built JSON files mirroring API routes for GitHub Pages hosting
 
 ### Data Flow
 
@@ -36,6 +39,7 @@ Local CLI (`tsx src/cli.ts <command>`) with direct SQLite access via `better-sql
 2. Processors fetch data from Universalis API with rate limiting
 3. Data stored directly in local SQLite via `better-sqlite3`
 4. API reads directly from SQLite (sub-millisecond locally, no cache layer needed)
+5. `dump` exports SQLite data to static JSON files matching API route structure
 
 ### Tier Polling Frequencies
 
@@ -69,7 +73,8 @@ src/
 │   ├── aggregate.ts          # Hourly aggregation rollup
 │   ├── maintain.ts           # Daily maintenance
 │   ├── stats.ts              # Print DB statistics
-│   └── serve.ts              # Start HTTP API server
+│   ├── serve.ts              # Start HTTP API server
+│   └── dump.ts               # Static JSON export for GitHub Pages
 ├── api/
 │   ├── router.ts             # Hono route definitions
 │   ├── middleware.ts          # CORS, error handler, request logger
@@ -79,7 +84,8 @@ src/
 │   ├── fetch-aggregated.ts   # Aggregated price fetch + store
 │   ├── tier-fetcher.ts       # Shared per-tier fetch loop (used by fetch + update)
 │   ├── compute-analytics.ts  # Analytics computation
-│   └── sync-items.ts         # XIVAPI item sync
+│   ├── sync-items.ts         # XIVAPI item sync
+│   └── static-export.ts      # Static JSON file generator (used by dump)
 ├── config/
 │   ├── constants.ts          # Tier config, limits
 │   └── datacenters.ts        # 陸行鳥 worlds + tax rates

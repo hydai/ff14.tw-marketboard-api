@@ -254,6 +254,45 @@ export function getDeals(
   return db.prepare(sql).all(...params);
 }
 
+// ── Velocity ──────────────────────────────────
+
+export function getVelocity(
+  db: Database.Database,
+  opts: { days: number; minSales: number; category?: number; limit: number }
+) {
+  const soldAtCutoff = isoTimeAgo(opts.days * 24);
+
+  let sql = `
+    WITH daily_sales AS (
+      SELECT item_id,
+             COUNT(*) as total_sales,
+             SUM(price_per_unit * quantity) as total_gil,
+             AVG(price_per_unit) as avg_price
+      FROM sales_history
+      WHERE sold_at >= ?
+      GROUP BY item_id
+    )
+    SELECT ds.item_id, i.name_zh as item_name,
+           ROUND(CAST(ds.total_sales AS REAL) / ${opts.days}, 1) as sales_per_day,
+           ROUND(ds.avg_price) as avg_price,
+           ROUND(CAST(ds.total_gil AS REAL) / ${opts.days}) as total_gil_per_day
+    FROM daily_sales ds
+    JOIN items i ON i.item_id = ds.item_id
+    WHERE CAST(ds.total_sales AS REAL) / ${opts.days} >= ?`;
+
+  const params: unknown[] = [soldAtCutoff, opts.minSales];
+
+  if (opts.category) {
+    sql += " AND i.category_id = ?";
+    params.push(opts.category);
+  }
+
+  sql += " ORDER BY sales_per_day DESC LIMIT ?";
+  params.push(opts.limit);
+
+  return db.prepare(sql).all(...params);
+}
+
 // ── Trending ───────────────────────────────────────
 
 export function getTrendingDiagnostics(

@@ -9,12 +9,13 @@ Local CLI tool for tracking FFXIV market board prices, analytics, and cross-worl
         │                                    │
         ▼                                    ▼
   Fetch prices / aggregated data        SQLite Database
-                                             │
-  XIVAPI ◄──── CLI: sync-items              ▼
-        │                              CLI: serve
-        ▼                                    │
-  Item metadata ──► SQLite                   ▼
-                                       Hono API ──► /api/v1/*
+                                          │       │
+  XIVAPI ◄──── CLI: sync-items           ▼       ▼
+        │                           CLI: serve  CLI: dump
+        ▼                                │       │
+  Item metadata ──► SQLite               ▼       ▼
+                                  Hono API    Static JSON
+                                  /api/v1/*   (GitHub Pages)
 ```
 
 The CLI (`tsx src/cli.ts <command>`) orchestrates all operations:
@@ -29,6 +30,7 @@ The CLI (`tsx src/cli.ts <command>`) orchestrates all operations:
 | `maintain`    | Daily cleanup + tier reclassification         |
 | `stats`       | Print database statistics                     |
 | `serve`       | Start local HTTP API server (default port 3000)|
+| `dump`        | Export DB to static JSON files for GitHub Pages |
 
 ### Data Processing
 
@@ -135,6 +137,40 @@ The `update` command uses a lock file to prevent overlapping runs, auto-runs dai
 ```bash
 tsx src/cli.ts serve
 ```
+
+### 7. (Optional) Export static JSON for GitHub Pages
+
+The `dump` command reads the SQLite database and writes pre-built JSON files that mirror the API route structure. These can be served directly from GitHub Pages as a zero-cost "static API."
+
+```bash
+# Export tier 1 items (recommended for frequent dumps, ~15-40 MB)
+tsx src/cli.ts dump --tier 1 --clean --output ./static-api
+
+# Export all items (larger, ~300 MB)
+tsx src/cli.ts dump --clean --output ./static-api
+
+# Useful options
+tsx src/cli.ts dump --tier 1 --clean --pretty --verbose  # Debug with formatted JSON
+tsx src/cli.ts dump --items-only                          # Skip analytics files
+tsx src/cli.ts dump --analytics-only                      # Skip per-item data
+```
+
+Output structure (`<output>/api/v1/`):
+
+| Path | Content |
+|------|---------|
+| `manifest.json` | Generation metadata + endpoint directory |
+| `worlds.json`, `tax-rates.json`, `status.json`, `stats.json` | Static data |
+| `items/index.json`, `items/page/{n}.json` | Item catalog (paginated) |
+| `items/{itemId}.json` | Item details + latest price snapshot |
+| `prices/{itemId}/index.json` | All current listings |
+| `prices/{itemId}/history.json` | 7d hourly price history |
+| `prices/{itemId}/sales.json` | Recent sales (max 200) |
+| `prices/{itemId}/world/{WorldName}.json` | Per-world listings |
+| `arbitrage.json`, `deals.json`, `velocity.json` | Analytics |
+| `trending/up.json`, `trending/down.json` | Price trends |
+
+Client usage: `fetch('https://<user>.github.io/<repo>/api/v1/prices/4556/index.json')`
 
 ## Development
 
