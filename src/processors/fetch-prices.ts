@@ -1,8 +1,7 @@
 import type Database from "better-sqlite3";
 import { UniversalisClient } from "../services/universalis.js";
-import { batchInsert } from "../db/batch.js";
 import { createLogger } from "../utils/logger.js";
-import type { UniversalisItemData, UniversalisListing, UniversalisSale } from "../utils/types.js";
+import type { UniversalisItemData, UniversalisSale } from "../utils/types.js";
 import { median } from "../utils/math.js";
 
 const log = createLogger("fetch-prices");
@@ -82,9 +81,9 @@ function processItem(
     if (data.listings.length > 0) {
       const listingStmt = db.prepare(
         `INSERT INTO current_listings
-         (listing_id, item_id, world_id, world_name, price_per_unit, quantity, total, tax,
-          hq, retainer_name, retainer_city, creator_name, last_review_time, fetched_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (listing_id, item_id, world_id, price_per_unit, quantity, total, tax,
+          hq, retainer_name, retainer_city, last_review_time, fetched_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(item_id, world_id, listing_id) DO UPDATE SET
            price_per_unit = excluded.price_per_unit,
            quantity = excluded.quantity,
@@ -94,30 +93,42 @@ function processItem(
 
       for (const l of data.listings) {
         listingStmt.run(
-          l.listingID, itemId, l.worldID, l.worldName,
+          l.listingID, itemId, l.worldID,
           l.pricePerUnit, l.quantity, l.total, l.tax,
-          l.hq ? 1 : 0, l.retainerName, l.retainerCity, l.creatorName,
+          l.hq ? 1 : 0, l.retainerName, l.retainerCity,
           new Date(l.lastReviewTime * 1000).toISOString(), snapshotTime,
         );
       }
     }
 
-    // INSERT price snapshot
-    db.prepare(
-      `INSERT INTO price_snapshots
-       (item_id, snapshot_time, min_price_nq, min_price_hq,
-        avg_price_nq, avg_price_hq, listing_count, units_for_sale,
-        sale_velocity_nq, sale_velocity_hq, cheapest_world_id, cheapest_world_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      itemId, snapshotTime,
-      data.minPriceNQ, data.minPriceHQ,
-      medianNQ, medianHQ,
-      data.listingsCount, data.unitsForSale,
-      data.nqSaleVelocity, data.hqSaleVelocity,
-      cheapestOverall?.worldID ?? null,
-      cheapestOverall?.worldName ?? null,
-    );
+    // INSERT price snapshot (deduplicated: skip if key fields unchanged)
+    const lastSnap = db.prepare(
+      `SELECT min_price_nq, min_price_hq, listing_count, units_for_sale
+       FROM price_snapshots WHERE item_id = ? ORDER BY snapshot_time DESC LIMIT 1`
+    ).get(itemId) as { min_price_nq: number | null; min_price_hq: number | null; listing_count: number; units_for_sale: number } | undefined;
+
+    const snapUnchanged = lastSnap
+      && lastSnap.min_price_nq === data.minPriceNQ
+      && lastSnap.min_price_hq === data.minPriceHQ
+      && lastSnap.listing_count === data.listingsCount
+      && lastSnap.units_for_sale === data.unitsForSale;
+
+    if (!snapUnchanged) {
+      db.prepare(
+        `INSERT INTO price_snapshots
+         (item_id, snapshot_time, min_price_nq, min_price_hq,
+          avg_price_nq, avg_price_hq, listing_count, units_for_sale,
+          sale_velocity_nq, sale_velocity_hq, cheapest_world_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        itemId, snapshotTime,
+        data.minPriceNQ, data.minPriceHQ,
+        medianNQ, medianHQ,
+        data.listingsCount, data.unitsForSale,
+        data.nqSaleVelocity, data.hqSaleVelocity,
+        cheapestOverall?.worldID ?? null,
+      );
+    }
 
     // INSERT new sales (filtered by last sale timestamp)
     if (data.recentHistory.length > 0) {
@@ -126,14 +137,14 @@ function processItem(
       if (newSales.length > 0) {
         const saleStmt = db.prepare(
           `INSERT INTO sales_history
-           (item_id, world_id, world_name, price_per_unit, quantity, total, hq, buyer_name, sold_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (item_id, world_id, price_per_unit, quantity, total, hq, buyer_name, sold_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT DO NOTHING`
         );
 
         for (const s of newSales) {
           saleStmt.run(
-            itemId, s.worldID, s.worldName,
+            itemId, s.worldID,
             s.pricePerUnit, s.quantity, s.total,
             s.hq ? 1 : 0, s.buyerName,
             new Date(s.timestamp * 1000).toISOString(),

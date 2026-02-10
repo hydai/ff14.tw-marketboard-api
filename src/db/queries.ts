@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { isoTimeAgo } from "../utils/datetime.js";
+import { WORLDS_BY_ID } from "../config/datacenters.js";
 
 // ── Items ──────────────────────────────────────────
 
@@ -49,7 +50,8 @@ export function getListingsByItem(db: Database.Database, itemId: number, hq?: bo
     params.push(hq ? 1 : 0);
   }
   sql += " ORDER BY price_per_unit ASC";
-  return db.prepare(sql).all(...params);
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return rows.map(r => ({ ...r, world_name: WORLDS_BY_ID.get(r.world_id as number)?.name ?? null }));
 }
 
 export function getListingsByItemAndWorld(
@@ -65,7 +67,8 @@ export function getListingsByItemAndWorld(
     params.push(hq ? 1 : 0);
   }
   sql += " ORDER BY price_per_unit ASC";
-  return db.prepare(sql).all(...params);
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return rows.map(r => ({ ...r, world_name: WORLDS_BY_ID.get(r.world_id as number)?.name ?? null }));
 }
 
 export function deleteListingsForItem(db: Database.Database, itemId: number) {
@@ -75,11 +78,13 @@ export function deleteListingsForItem(db: Database.Database, itemId: number) {
 // ── Price Snapshots ────────────────────────────────
 
 export function getLatestSnapshot(db: Database.Database, itemId: number) {
-  return db
+  const row = db
     .prepare(
       "SELECT * FROM price_snapshots WHERE item_id = ? ORDER BY snapshot_time DESC LIMIT 1"
     )
-    .get(itemId);
+    .get(itemId) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  return { ...row, cheapest_world_name: WORLDS_BY_ID.get(row.cheapest_world_id as number)?.name ?? null };
 }
 
 export function getPriceHistory(
@@ -102,7 +107,16 @@ export function getPriceHistory(
         : "snapshot_time";
 
   const sql = `SELECT * FROM ${table} WHERE item_id = ? AND ${timeCol} >= ? ORDER BY ${timeCol} ASC`;
-  return db.prepare(sql).all(itemId, opts.since);
+  const rows = db.prepare(sql).all(itemId, opts.since);
+  if (opts.resolution === "raw") {
+    return (rows as Record<string, unknown>[]).map(r => ({
+      ...r,
+      cheapest_world_name: r.cheapest_world_id != null
+        ? WORLDS_BY_ID.get(r.cheapest_world_id as number)?.name ?? null
+        : null,
+    }));
+  }
+  return rows;
 }
 
 // ── Sales History ──────────────────────────────────
@@ -122,7 +136,8 @@ export function getRecentSales(
   }
 
   sql += " ORDER BY sold_at DESC LIMIT 200";
-  return db.prepare(sql).all(...params);
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return rows.map(r => ({ ...r, world_name: WORLDS_BY_ID.get(r.world_id as number)?.name ?? null }));
 }
 
 // ── Tax Rates ──────────────────────────────────────
@@ -159,7 +174,7 @@ export function getArbitrageOpportunities(
 ) {
   let sql = `
     WITH world_mins AS (
-      SELECT item_id, world_id, world_name, MIN(price_per_unit) as min_price_nq
+      SELECT item_id, world_id, MIN(price_per_unit) as min_price_nq
       FROM current_listings
       WHERE hq = 0
       GROUP BY item_id, world_id
@@ -167,9 +182,9 @@ export function getArbitrageOpportunities(
     buy_sell AS (
       SELECT
         b.item_id,
-        b.world_name as buy_world,
+        b.world_id as buy_world_id,
         b.min_price_nq as buy_price,
-        s.world_name as sell_world,
+        s.world_id as sell_world_id,
         s.min_price_nq as sell_price,
         (s.min_price_nq - b.min_price_nq) as profit,
         CAST((s.min_price_nq - b.min_price_nq) AS REAL) / b.min_price_nq * 100 as profit_pct
@@ -195,7 +210,12 @@ export function getArbitrageOpportunities(
   sql += " ORDER BY bs.profit_pct DESC LIMIT ?";
   params.push(opts.limit);
 
-  return db.prepare(sql).all(...params);
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return rows.map(r => ({
+    ...r,
+    buy_world: WORLDS_BY_ID.get(r.buy_world_id as number)?.name ?? null,
+    sell_world: WORLDS_BY_ID.get(r.sell_world_id as number)?.name ?? null,
+  }));
 }
 
 // ── Deals ──────────────────────────────────────────
@@ -206,7 +226,7 @@ export function getDeals(
 ) {
   let sql = `
     WITH world_mins AS (
-      SELECT item_id, world_id, world_name,
+      SELECT item_id, world_id,
              MIN(price_per_unit) as min_price
       FROM current_listings
       WHERE hq = 0
@@ -219,7 +239,7 @@ export function getDeals(
       GROUP BY item_id
     ),
     cheapest AS (
-      SELECT wm.item_id, wm.world_id, wm.world_name, wm.min_price as price_per_unit,
+      SELECT wm.item_id, wm.world_id, wm.min_price as price_per_unit,
              ROW_NUMBER() OVER (PARTITION BY wm.item_id ORDER BY wm.min_price ASC) as rn
       FROM world_mins wm`;
 
@@ -232,7 +252,7 @@ export function getDeals(
 
   sql += `
     )
-    SELECT c.item_id, i.name_zh as item_name, c.world_name, c.price_per_unit as current_price,
+    SELECT c.item_id, i.name_zh as item_name, c.world_id, c.price_per_unit as current_price,
            mm.max_min_price as average_price,
            ROUND((1 - CAST(c.price_per_unit AS REAL) / mm.max_min_price) * 100, 1) as discount
     FROM cheapest c
@@ -251,7 +271,11 @@ export function getDeals(
   sql += " ORDER BY discount DESC LIMIT ?";
   params.push(opts.limit);
 
-  return db.prepare(sql).all(...params);
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return rows.map(r => ({
+    ...r,
+    world_name: WORLDS_BY_ID.get(r.world_id as number)?.name ?? null,
+  }));
 }
 
 // ── Velocity ──────────────────────────────────

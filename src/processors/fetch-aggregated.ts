@@ -1,9 +1,7 @@
 import type Database from "better-sqlite3";
 import { UniversalisClient } from "../services/universalis.js";
-import { batchInsert } from "../db/batch.js";
 import { createLogger } from "../utils/logger.js";
 import type { UniversalisAggregatedItem } from "../utils/types.js";
-import { WORLDS_BY_ID } from "../config/datacenters.js";
 
 const log = createLogger("fetch-aggregated");
 
@@ -56,34 +54,33 @@ function processAggregatedItem(
   const nqPrice = minNQ ?? Infinity;
   const hqPrice = minHQ ?? Infinity;
   const cheapestWorldId = nqPrice <= hqPrice ? nqWorldId : hqWorldId;
-  const cheapestWorldName = cheapestWorldId != null
-    ? (WORLDS_BY_ID.get(cheapestWorldId)?.name ?? null)
-    : null;
 
-  batchInsert(
-    db,
-    "price_snapshots",
-    [
-      "item_id", "snapshot_time",
-      "min_price_nq", "min_price_hq",
-      "avg_price_nq", "avg_price_hq",
-      "listing_count", "units_for_sale",
-      "sale_velocity_nq", "sale_velocity_hq",
-      "cheapest_world_id", "cheapest_world_name",
-    ],
-    [[
-      itemId,
-      snapshotTime,
-      minNQ,
-      minHQ,
-      avgNQ,
-      avgHQ,
-      0,
-      0,
-      velocityNQ,
-      velocityHQ,
+  // Deduplicate: skip insert if key fields unchanged from last snapshot
+  const lastSnap = db.prepare(
+    `SELECT min_price_nq, min_price_hq, listing_count, units_for_sale
+     FROM price_snapshots WHERE item_id = ? ORDER BY snapshot_time DESC LIMIT 1`
+  ).get(itemId) as { min_price_nq: number | null; min_price_hq: number | null; listing_count: number; units_for_sale: number } | undefined;
+
+  const snapUnchanged = lastSnap
+    && lastSnap.min_price_nq === minNQ
+    && lastSnap.min_price_hq === minHQ
+    && lastSnap.listing_count === 0
+    && lastSnap.units_for_sale === 0;
+
+  if (!snapUnchanged) {
+    db.prepare(
+      `INSERT INTO price_snapshots
+       (item_id, snapshot_time, min_price_nq, min_price_hq,
+        avg_price_nq, avg_price_hq, listing_count, units_for_sale,
+        sale_velocity_nq, sale_velocity_hq, cheapest_world_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      itemId, snapshotTime,
+      minNQ, minHQ,
+      avgNQ, avgHQ,
+      0, 0,
+      velocityNQ, velocityHQ,
       cheapestWorldId,
-      cheapestWorldName,
-    ]]
-  );
+    );
+  }
 }

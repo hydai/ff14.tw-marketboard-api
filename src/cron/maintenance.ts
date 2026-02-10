@@ -154,7 +154,20 @@ export function runMaintenance(db: Database.Database): void {
 
   log.info("Reclassified item tiers");
 
-  // Step 7: Update system_meta
+  // Step 7: Weekly VACUUM to reclaim freed pages from dropped columns/indexes/data
+  const lastVacuum = db.prepare("SELECT value FROM system_meta WHERE key = 'last_vacuum'").get() as { value: string } | undefined;
+  const daysSinceVacuum = lastVacuum
+    ? (Date.now() - new Date(lastVacuum.value).getTime()) / 86400000
+    : Infinity;
+
+  if (daysSinceVacuum >= 7) {
+    log.info("Running weekly VACUUM");
+    db.exec("VACUUM");
+    setMeta(db, "last_vacuum", new Date().toISOString());
+    log.info("VACUUM complete");
+  }
+
+  // Step 8: Update system_meta
   setMeta(db, "last_maintenance", new Date().toISOString());
 
   const elapsed = Date.now() - start;
