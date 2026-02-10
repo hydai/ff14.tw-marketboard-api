@@ -17,7 +17,8 @@ tsx src/cli.ts maintain         # Run daily maintenance (cleanup + tier reclassi
 tsx src/cli.ts stats            # Print database statistics
 tsx src/cli.ts serve            # Start local HTTP API server (default port 3000)
 tsx src/cli.ts dump             # Export DB to static JSON files (for GitHub Pages)
-tsx src/cli.ts dump --tier 1 --clean --output ./static-api  # Typical usage
+tsx src/cli.ts dump --tier 1 --clean --output ./static-api  # Single tier
+tsx src/cli.ts dump --tier 1,2 --clean --output ./static-api  # Multiple tiers (comma-separated)
 
 npm test              # Run tests (vitest)
 npm run typecheck     # Type check (tsc --noEmit)

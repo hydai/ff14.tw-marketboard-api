@@ -22,17 +22,21 @@ export function dumpCommand(opts: DumpOptions): void {
   const migrationsDir = resolve(import.meta.dirname, "../../migrations");
   runMigrations(db, migrationsDir);
 
-  const tier = opts.tier ? Number(opts.tier) : undefined;
-  if (tier !== undefined && ![1, 2, 3].includes(tier)) {
-    console.error("Error: --tier must be 1, 2, or 3");
-    db.close();
-    process.exit(1);
+  let tiers: number[] | undefined;
+  if (opts.tier) {
+    tiers = opts.tier.split(",").map(Number);
+    const invalid = tiers.filter((t) => ![1, 2, 3].includes(t));
+    if (invalid.length > 0) {
+      console.error(`Error: --tier values must be 1, 2, or 3 (got: ${invalid.join(", ")})`);
+      db.close();
+      process.exit(1);
+    }
   }
 
   runStaticExport({
     db,
     outputDir: resolve(opts.output),
-    tier,
+    tiers,
     historyPeriod: opts.historyPeriod,
     salesDays: Number(opts.salesDays),
     analyticsLimit: Number(opts.analyticsLimit),

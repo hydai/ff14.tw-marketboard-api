@@ -146,13 +146,16 @@ The `dump` command reads the SQLite database and writes pre-built JSON files tha
 # Export tier 1 items (recommended for frequent dumps, ~15-40 MB)
 tsx src/cli.ts dump --tier 1 --clean --output ./static-api
 
+# Export tiers 1 and 2 (comma-separated)
+tsx src/cli.ts dump --tier 1,2 --clean --output ./static-api
+
 # Export all items (larger, ~300 MB)
 tsx src/cli.ts dump --clean --output ./static-api
 
 # Useful options
-tsx src/cli.ts dump --tier 1 --clean --pretty --verbose  # Debug with formatted JSON
-tsx src/cli.ts dump --items-only                          # Skip analytics files
-tsx src/cli.ts dump --analytics-only                      # Skip per-item data
+tsx src/cli.ts dump --tier 1,2 --clean --pretty --verbose  # Debug with formatted JSON
+tsx src/cli.ts dump --items-only                            # Skip analytics files
+tsx src/cli.ts dump --analytics-only                        # Skip per-item data
 ```
 
 Output structure (`<output>/api/v1/`):

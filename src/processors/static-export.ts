@@ -33,7 +33,7 @@ import { createLogger } from "../utils/logger.js";
 export interface ExportOptions {
   db: Database.Database;
   outputDir: string;
-  tier?: number;
+  tiers?: number[];
   historyPeriod: string;
   salesDays: number;
   analyticsLimit: number;
@@ -85,8 +85,8 @@ export function runStaticExport(opts: ExportOptions): void {
   mkdirSync(base, { recursive: true });
 
   // Collect item IDs to export
-  const itemIds = collectItemIds(opts.db, opts.tier, log);
-  log.info("Items to export", { count: itemIds.length, tier: opts.tier ?? "all" });
+  const itemIds = collectItemIds(opts.db, opts.tiers, log);
+  log.info("Items to export", { count: itemIds.length, tiers: opts.tiers ?? "all" });
 
   let priceFileCount = 0;
   let analyticsFileCount = 0;
@@ -152,13 +152,23 @@ export function runStaticExport(opts: ExportOptions): void {
 
 function collectItemIds(
   db: Database.Database,
-  tier: number | undefined,
+  tiers: number[] | undefined,
   log: ReturnType<typeof createLogger>
 ): number[] {
-  if (tier) {
-    const rows = getItemsByTier(db, tier);
-    log.debug("Filtered by tier", { tier, count: rows.length });
-    return rows.map((r) => r.item_id);
+  if (tiers && tiers.length > 0) {
+    const seen = new Set<number>();
+    const result: number[] = [];
+    for (const tier of tiers) {
+      const rows = getItemsByTier(db, tier);
+      for (const r of rows) {
+        if (!seen.has(r.item_id)) {
+          seen.add(r.item_id);
+          result.push(r.item_id);
+        }
+      }
+      log.debug("Collected tier", { tier, count: rows.length, totalSoFar: result.length });
+    }
+    return result.sort((a, b) => a - b);
   }
 
   // All items that have tiers assigned

@@ -79,7 +79,7 @@ program
   .description("Export database to static JSON files for GitHub Pages hosting")
   .option("--db <path>", "SQLite file path", "./data/marketboard.db")
   .option("--output <dir>", "Output directory", "./static-api")
-  .option("--tier <tier>", "Only export items in this tier (1, 2, or 3)")
+  .option("--tier <tiers>", "Tier filter, comma-separated (e.g. 1,2)")
   .option("--history-period <period>", "Price history window", "7d")
   .option("--sales-days <days>", "Sales history window in days", "7")
   .option("--analytics-limit <n>", "Max rows per analytics file", "200")
