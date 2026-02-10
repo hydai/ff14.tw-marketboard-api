@@ -123,6 +123,10 @@ Both processors (`fetch-prices`, `fetch-aggregated`) determine the cheapest worl
 - `fetch-prices` has full listing data, reads `worldName` directly from `UniversalisListing`
 - `fetch-aggregated` only gets numeric `worldId`, resolves name via `WORLDS_BY_ID`
 
+### Listing Dedup (fetch-prices)
+
+Universalis can return duplicate `listing_id`s within a single multi-item response. The INSERT into `current_listings` uses `ON CONFLICT(item_id, world_id, listing_id) DO NOTHING` to handle this — do not remove it even though the preceding DELETE appears to make conflicts impossible. The duplicates come from within the same API batch, not from pre-existing rows.
+
 ### Sales Dedup (fetch-prices)
 
 Instead of KV-based `lastSaleTs`, the CLI version queries `SELECT MAX(sold_at) FROM sales_history WHERE item_id = ?` to determine the cutoff for new sales.
