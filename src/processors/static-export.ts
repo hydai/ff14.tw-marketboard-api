@@ -26,6 +26,7 @@ import {
 } from "../db/queries.js";
 import { getCollectionStats } from "../db/stats.js";
 import { isoTimeAgo } from "../utils/datetime.js";
+import { buildIconUrl } from "../utils/icon.js";
 import { createLogger } from "../utils/logger.js";
 
 // ── Types ─────────────────────────────────────
@@ -215,12 +216,13 @@ function exportItemCatalog(
   pretty: boolean
 ): void {
   // Build compact catalog
-  const catalog: { item_id: number; name_en: string | null; name_zh: string | null; tier: number | null }[] = [];
+  const catalog: { item_id: number; name_en: string | null; name_zh: string | null; icon_url: string | null; tier: number | null }[] = [];
   for (const itemId of itemIds) {
     const item = getItemById(db, itemId) as {
       item_id: number;
       name_en: string | null;
       name_zh: string | null;
+      icon_path: string;
     } | undefined;
     const tierRow = db.prepare("SELECT tier FROM item_tiers WHERE item_id = ?").get(itemId) as { tier: number } | undefined;
 
@@ -229,6 +231,7 @@ function exportItemCatalog(
         item_id: item.item_id,
         name_en: item.name_en ?? null,
         name_zh: item.name_zh ?? null,
+        icon_url: buildIconUrl(item.icon_path),
         tier: tierRow?.tier ?? null,
       });
     }
@@ -262,9 +265,10 @@ function exportItemData(
   const priceBase = join(base, "prices", `${itemId}`);
 
   // items/<itemId>.json — item info + latest snapshot
-  const item = getItemById(db, itemId);
+  const item = getItemById(db, itemId) as Record<string, unknown> | undefined;
   const snapshot = getLatestSnapshot(db, itemId);
-  writeJson(itemBase, { data: item, latestSnapshot: snapshot ?? null }, pretty);
+  const itemWithIcon = item ? { ...item, icon_url: buildIconUrl(item.icon_path as string ?? "") } : item;
+  writeJson(itemBase, { data: itemWithIcon, latestSnapshot: snapshot ?? null }, pretty);
   fileCount++;
 
   // prices/<itemId>/index.json — all current listings

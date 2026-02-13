@@ -2,6 +2,7 @@ import { Context } from "hono";
 import type Database from "better-sqlite3";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../config/constants.js";
 import { getItemById, getLatestSnapshot, searchItems } from "../../db/queries.js";
+import { buildIconUrl } from "../../utils/icon.js";
 import { HTTPError } from "../middleware.js";
 
 type AppEnv = { Variables: { db: Database.Database } };
@@ -20,8 +21,13 @@ export function listItems(c: Context<AppEnv>) {
     limit,
   });
 
+  const data = result.data.map((row) => {
+    const item = row as Record<string, unknown>;
+    return { ...item, icon_url: buildIconUrl(item.icon_path as string ?? "") };
+  });
+
   return c.json({
-    data: result.data,
+    data,
     total: result.total,
     page,
     limit,
@@ -38,9 +44,11 @@ export function getItem(c: Context<AppEnv>) {
 
   const priceSummary = getLatestSnapshot(db, itemId);
 
+  const itemRecord = item as Record<string, unknown>;
   return c.json({
     data: {
-      ...item as Record<string, unknown>,
+      ...itemRecord,
+      icon_url: buildIconUrl(itemRecord.icon_path as string ?? ""),
       priceSummary,
     },
   });
