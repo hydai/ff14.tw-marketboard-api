@@ -10,6 +10,7 @@ import { createLogger } from "../utils/logger.js";
 import { retryWithBackoff } from "../utils/rate-limiter.js";
 import type {
   UniversalisMultiResponse,
+  UniversalisItemData,
   UniversalisAggregatedResponse,
   UniversalisTaxRates,
 } from "../utils/types.js";
@@ -43,8 +44,17 @@ export class UniversalisClient {
       const ids = batch.join(",");
       const url = `${this.baseUrl}/${encodeURIComponent(this.dcName)}/${ids}?listings=20&entries=20`;
       const resp = await this.requestWithRetry<UniversalisMultiResponse>(url);
-      merged.itemIDs.push(...resp.itemIDs);
-      Object.assign(merged.items, resp.items);
+
+      // Universalis returns a flat UniversalisItemData (no itemIDs/items wrapper)
+      // when the batch contains exactly 1 item. Normalize to multi-item shape.
+      if (!Array.isArray(resp.itemIDs)) {
+        const single = resp as unknown as UniversalisItemData;
+        merged.itemIDs.push(single.itemID);
+        merged.items[String(single.itemID)] = single;
+      } else {
+        merged.itemIDs.push(...resp.itemIDs);
+        Object.assign(merged.items, resp.items);
+      }
     }
 
     return merged;
@@ -63,8 +73,12 @@ export class UniversalisClient {
       const ids = batch.join(",");
       const url = `${this.baseUrl}/aggregated/${encodeURIComponent(this.dcName)}/${ids}`;
       const resp = await this.requestWithRetry<UniversalisAggregatedResponse>(url);
-      merged.results.push(...resp.results);
-      merged.failedItems.push(...resp.failedItems);
+      if (resp.results) {
+        merged.results.push(...resp.results);
+      }
+      if (resp.failedItems) {
+        merged.failedItems.push(...resp.failedItems);
+      }
     }
 
     return merged;
