@@ -131,6 +131,14 @@ Universalis can return duplicate `listing_id`s within a single multi-item respon
 
 Instead of KV-based `lastSaleTs`, the CLI version queries `SELECT MAX(sold_at) FROM sales_history WHERE item_id = ?` to determine the cutoff for new sales.
 
+### Single-Item Response Normalization (universalis.ts)
+
+Universalis returns a **different response shape** for single-item vs multi-item requests:
+- Multi-item (`/dc/123,456`): `{ itemIDs: [...], items: {...} }` wrapper
+- Single-item (`/dc/123`): flat `UniversalisItemData` with no wrapper
+
+`fetchMultiItemPrices` normalizes single-item responses into the multi-item shape before merging. This triggers when the last batch from `chunk(itemIds, 20)` has exactly 1 item. Do not remove the `Array.isArray(resp.itemIDs)` guard.
+
 ## Important Notes
 
 - Rate limiting uses a semaphore-based `RateLimiter` (max 8 concurrent, capped at `UNIVERSALIS_MAX_CONCURRENT`) with `retryWithBackoff` for 429 handling on both Universalis and XIVAPI
